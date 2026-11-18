@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=io.github.nerdyslacker.Sysentra.System1
+Exec=/usr/libexec/sysentrad
+User=root

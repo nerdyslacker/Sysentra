@@ -1,0 +1,27 @@
+{
+  "name": "sysentra-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --mode production",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --test src/lib/*.test.js"
+  },
+  "dependencies": {
+    "@wailsio/runtime": "3.1.0"
+  },
+  "devDependencies": {
+    "@skeletonlabs/skeleton": "5.0.4",
+    "@skeletonlabs/skeleton-svelte": "5.0.4",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@tailwindcss/vite": "^4.3.5",
+    "svelte": "^5.46.4",
+    "svelte-check": "^4.4.8",
+    "tailwindcss": "^4.3.5",
+    "tslib": "^2.6.2",
+    "typescript": "^5.2.2",
+    "vite": "^8.2.4"
+  }
+}

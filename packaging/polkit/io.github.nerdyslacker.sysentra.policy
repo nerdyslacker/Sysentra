@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Sysentra</vendor>
+  <vendor_url>https://github.com/nerdyslacker</vendor_url>
+  <action id="io.github.nerdyslacker.sysentra.manage-packages">
+    <description>Manage system packages with Sysentra</description>
+    <message>Authentication is required to manage system packages</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.imply">io.github.nerdyslacker.sysentra.manage-services io.github.nerdyslacker.sysentra.manage-xbps-config io.github.nerdyslacker.sysentra.manage-system-config io.github.nerdyslacker.sysentra.manage-accounts</annotate>
+  </action>
+  <action id="io.github.nerdyslacker.sysentra.manage-services">
+    <description>Manage runit services with Sysentra</description>
+    <message>Authentication is required to manage system services</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.imply">io.github.nerdyslacker.sysentra.manage-packages io.github.nerdyslacker.sysentra.manage-xbps-config io.github.nerdyslacker.sysentra.manage-system-config io.github.nerdyslacker.sysentra.manage-accounts</annotate>
+  </action>
+  <action id="io.github.nerdyslacker.sysentra.manage-xbps-config">
+    <description>Manage Sysentra-owned XBPS configuration</description>
+    <message>Authentication is required to change XBPS configuration</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.imply">io.github.nerdyslacker.sysentra.manage-packages io.github.nerdyslacker.sysentra.manage-services io.github.nerdyslacker.sysentra.manage-system-config io.github.nerdyslacker.sysentra.manage-accounts</annotate>
+  </action>
+  <action id="io.github.nerdyslacker.sysentra.manage-system-config">
+    <description>Manage system configuration with Sysentra</description>
+    <message>Authentication is required to change system configuration</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.imply">io.github.nerdyslacker.sysentra.manage-packages io.github.nerdyslacker.sysentra.manage-services io.github.nerdyslacker.sysentra.manage-xbps-config io.github.nerdyslacker.sysentra.manage-accounts</annotate>
+  </action>
+  <action id="io.github.nerdyslacker.sysentra.manage-accounts">
+    <description>Manage local users and groups with Sysentra</description>
+    <message>Authentication is required to manage local users and groups</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.imply">io.github.nerdyslacker.sysentra.manage-packages io.github.nerdyslacker.sysentra.manage-services io.github.nerdyslacker.sysentra.manage-xbps-config io.github.nerdyslacker.sysentra.manage-system-config</annotate>
+  </action>
+</policyconfig>
