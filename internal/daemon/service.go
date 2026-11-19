@@ -51,6 +51,10 @@ func NewService(authorizer Authorizer, planner Planner, executor Executor, audit
 	return &Service{authorizer: authorizer, planner: planner, executor: executor, audit: audit, plans: make(map[string]pendingPlan)}
 }
 
+func (s *Service) Authorize(ctx context.Context, sender string) error {
+	return s.authorizer.Authorize(ctx, sender, security.PackageManagementAction, true)
+}
+
 func (s *Service) PlanPackageRequest(ctx context.Context, sender, payload string) (transactions.Plan, error) {
 	if sender == "" {
 		s.recordAudit("plan", "rejected", sender, security.PackageRequest{})

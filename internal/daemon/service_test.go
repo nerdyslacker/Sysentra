@@ -46,6 +46,17 @@ func (a *authorizationStub) Authorize(_ context.Context, sender, action string, 
 	return a.err
 }
 
+func TestAuthorizeSessionUsesInteractivePackagePermission(t *testing.T) {
+	authorizer := &authorizationStub{}
+	service := NewService(authorizer, plannerStub{}, &executorStub{})
+	if err := service.Authorize(context.Background(), ":1.42"); err != nil {
+		t.Fatal(err)
+	}
+	if authorizer.sender != ":1.42" || authorizer.action != security.PackageManagementAction {
+		t.Fatalf("sender=%q action=%q", authorizer.sender, authorizer.action)
+	}
+}
+
 func TestAuthorizePackageRequestValidatesBeforeAuthorization(t *testing.T) {
 	authorizer := &authorizationStub{}
 	service := NewService(authorizer, plannerStub{}, &executorStub{})

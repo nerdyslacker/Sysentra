@@ -29,6 +29,7 @@ const (
 	xbpsQuery       = "/usr/bin/xbps-query"
 	xbpsReconfigure = "/usr/bin/xbps-reconfigure"
 	xbpsRindex      = "/usr/bin/xbps-rindex"
+	vkpurge         = "/usr/bin/vkpurge"
 	xbpsCache       = "/var/cache/xbps"
 )
 
@@ -78,8 +79,18 @@ func (e *XBPSExecutor) Commit(ctx context.Context, plan Plan) (Result, error) {
 	if err := plan.ValidateCommit(e.now(), fingerprint); err != nil {
 		return Result{}, err
 	}
+	if plan.Request.Operation == security.Remove || plan.Request.Operation == security.Purge || plan.Request.Operation == security.ForceRemove {
+		if err := validateKernelPackageRemoval(ctx, e.runner, plan.Request.Packages); err != nil {
+			return Result{}, err
+		}
+	}
 	if plan.Request.Operation == security.Downgrade {
 		return e.commitDowngrade(ctx, plan)
+	}
+	if plan.Request.Operation == security.PurgeKernels {
+		if err := validateKernelPurge(ctx, e.runner, plan.Request.Packages); err != nil {
+			return Result{}, err
+		}
 	}
 	name, args, err := executionCommand(plan.Request)
 	if err != nil {
@@ -261,6 +272,17 @@ func verifyPackageResult(ctx context.Context, commandRunner runner.Runner, plan 
 		}
 	case security.RemoveOrphans:
 		return verifyInstalledChanges(ctx, commandRunner, plan.Changes)
+	case security.PurgeKernels:
+		result, err := commandRunner.Run(ctx, vkpurge, "list")
+		if err != nil {
+			return fmt.Errorf("list old kernels after purge: %w", err)
+		}
+		remaining := listedValues(result.Stdout)
+		for _, version := range request.Packages {
+			if remaining[version] {
+				return fmt.Errorf("kernel %s remains after vkpurge", version)
+			}
+		}
 	case security.Hold, security.Unhold, security.RepoLock, security.RepoUnlock:
 		flag := "--list-hold-pkgs"
 		want := request.Operation == security.Hold
@@ -405,6 +427,8 @@ func executionCommand(request security.PackageRequest) (string, []string, error)
 		return xbpsPkgDB, []string{"--all"}, nil
 	case security.ReconfigureAll:
 		return xbpsReconfigure, []string{"--force", "--all"}, nil
+	case security.PurgeKernels:
+		return vkpurge, append([]string{"rm"}, request.Packages...), nil
 	case security.Hold, security.Unhold, security.RepoLock, security.RepoUnlock:
 		return xbpsPkgDB, append([]string{"--mode", string(request.Operation)}, request.Packages...), nil
 	default:
@@ -416,6 +440,11 @@ func (p *XBPSPlanner) Plan(ctx context.Context, request security.PackageRequest)
 	if err := request.Validate(); err != nil {
 		return Plan{}, err
 	}
+	if request.Operation == security.Remove || request.Operation == security.Purge || request.Operation == security.ForceRemove {
+		if err := validateKernelPackageRemoval(ctx, p.runner, request.Packages); err != nil {
+			return Plan{}, err
+		}
+	}
 	fingerprint, err := p.fingerprint()
 	if err != nil {
 		return Plan{}, fmt.Errorf("fingerprint package state: %w", err)
@@ -423,6 +452,19 @@ func (p *XBPSPlanner) Plan(ctx context.Context, request security.PackageRequest)
 	plan := Plan{Request: request, StateFingerprint: fingerprint, ExpiresAt: p.now().Add(2 * time.Minute)}
 	if request.Operation == security.Downgrade {
 		return p.planDowngrade(ctx, plan)
+	}
+	if request.Operation == security.PurgeKernels {
+		if err := validateKernelPurge(ctx, p.runner, request.Packages); err != nil {
+			return Plan{}, err
+		}
+		plan.Changes = make([]Change, len(request.Packages))
+		for index, version := range request.Packages {
+			plan.Changes[index] = Change{Package: "kernel " + version, Action: "remove", FromVersion: version}
+			plan.InstalledSize += bootArtifactSize(version)
+		}
+		plan.AvailableSpace = availableSpace("/boot")
+		plan.Diagnostics = []string{"vkpurge will run Void kernel pre/post-remove hooks and update the boot menu."}
+		return plan, nil
 	}
 	name, args, native := previewCommand(request)
 	if !native {
@@ -523,6 +565,155 @@ func availableSpace(path string) int64 {
 		return 0
 	}
 	return int64(state.Bavail) * int64(state.Bsize)
+}
+
+func validateKernelPurge(ctx context.Context, commandRunner runner.Runner, requested []string) error {
+	result, err := commandRunner.Run(ctx, vkpurge, "list")
+	if err != nil {
+		return fmt.Errorf("list old kernels: %w", err)
+	}
+	old := listedValues(result.Stdout)
+	if len(old)-len(requested) < 1 {
+		return errors.New("kernel purge must preserve one old bootable fallback")
+	}
+	runningResult, err := commandRunner.Run(ctx, "/usr/bin/uname", "-r")
+	if err != nil {
+		return fmt.Errorf("detect running kernel before purge: %w", err)
+	}
+	running := strings.TrimSpace(string(runningResult.Stdout))
+	for _, version := range requested {
+		if !old[version] {
+			return fmt.Errorf("kernel %s is not reported as old by vkpurge", version)
+		}
+		if version == running {
+			return fmt.Errorf("refusing to purge running kernel %s", version)
+		}
+	}
+	return nil
+}
+
+func validateKernelPackageRemoval(ctx context.Context, commandRunner runner.Runner, requested []string) error {
+	requestedKernels := map[string]bool{}
+	for _, name := range requested {
+		result, err := commandRunner.Run(ctx, xbpsQuery, "--files", name)
+		if err != nil {
+			return fmt.Errorf("inspect package files before removal: %w", err)
+		}
+		if containsKernelBootImage(result.Stdout) {
+			requestedKernels[name] = true
+		}
+	}
+	if len(requestedKernels) == 0 {
+		return nil
+	}
+	owners, err := commandRunner.Run(ctx, xbpsQuery, "--ownedby", "/boot/vmlinuz-*")
+	if err != nil {
+		return fmt.Errorf("identify installed kernels before removal: %w", err)
+	}
+	runningResult, err := commandRunner.Run(ctx, "/usr/bin/uname", "-r")
+	if err != nil {
+		return fmt.Errorf("detect running kernel before removal: %w", err)
+	}
+	return validateKernelRemovalState(requested, parseKernelOwners(owners.Stdout), strings.TrimSpace(string(runningResult.Stdout)))
+}
+
+func validateKernelRemovalState(requested []string, kernels map[string][]string, running string) error {
+	hasKernel := false
+	for _, name := range requested {
+		if len(kernels[name]) > 0 {
+			hasKernel = true
+			break
+		}
+	}
+	if !hasKernel {
+		return nil
+	}
+	if len(kernels) == 0 {
+		return errors.New("kernel package state is unknown; removal is blocked")
+	}
+	matches := []string{}
+	for name, versions := range kernels {
+		for _, version := range versions {
+			if version == running {
+				matches = append(matches, name)
+				break
+			}
+		}
+	}
+	if len(matches) != 1 {
+		return errors.New("running kernel package could not be proven; removal is blocked")
+	}
+	runningPackage := matches[0]
+	remove := map[string]bool{}
+	for _, name := range requested {
+		if len(kernels[name]) > 0 {
+			remove[name] = true
+		}
+	}
+	if remove[runningPackage] {
+		return fmt.Errorf("refusing to remove running kernel package %s", runningPackage)
+	}
+	remaining := 0
+	for name := range kernels {
+		if !remove[name] {
+			remaining++
+		}
+	}
+	if remaining < 2 {
+		return errors.New("kernel removal must preserve the running kernel and one installed fallback series")
+	}
+	return nil
+}
+
+func containsKernelBootImage(output []byte) bool {
+	for _, path := range strings.Fields(string(output)) {
+		if strings.HasPrefix(path, "/boot/vmlinuz-") {
+			return true
+		}
+	}
+	return false
+}
+
+func parseKernelOwners(output []byte) map[string][]string {
+	kernels := map[string][]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		owner, path, ok := strings.Cut(line, ": ")
+		if !ok {
+			continue
+		}
+		name, _, ok := splitPackageVersion(owner)
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(path)
+		if len(fields) == 0 {
+			continue
+		}
+		path = fields[0]
+		if version := strings.TrimPrefix(path, "/boot/vmlinuz-"); version != path && version != "" {
+			kernels[name] = append(kernels[name], version)
+		}
+	}
+	return kernels
+}
+
+func listedValues(output []byte) map[string]bool {
+	values := map[string]bool{}
+	for _, value := range strings.Fields(string(output)) {
+		values[value] = true
+	}
+	return values
+}
+
+func bootArtifactSize(version string) int64 {
+	var total int64
+	for _, prefix := range []string{"config-", "initramfs-", "System.map-", "vmlinuz-"} {
+		info, err := os.Lstat(filepath.Join("/boot", prefix+version))
+		if err == nil && info.Mode().IsRegular() {
+			total += info.Size()
+		}
+	}
+	return total
 }
 
 func previewCommand(request security.PackageRequest) (string, []string, bool) {

@@ -18,7 +18,7 @@ Sysentra is a system management center for Void Linux and derivatives.
 
 - Search, install, remove, update, hold, and repository-lock XBPS packages.
 - Browse and manage Flatpak applications from Flathub.
-- Install, remove, purge, and reconfigure Linux kernels.
+- Install, safely remove, purge, and reconfigure Linux kernels; inspect boot images, boot/EFI capacity, bootloader, and DKMS state.
 - Manage system and user runit services.
 - Manage XBPS repositories, mirrors, and package rules.
 - Inspect firmware and hardware drivers.

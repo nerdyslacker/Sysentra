@@ -8,7 +8,7 @@ import (
 
 const (
 	APIVersion       = 1
-	HelperAPIVersion = 8
+	HelperAPIVersion = 10
 )
 
 type Operation string
@@ -32,6 +32,7 @@ const (
 	CleanCache     Operation = "clean-cache"
 	VerifyDatabase Operation = "verify-database"
 	ReconfigureAll Operation = "reconfigure-all"
+	PurgeKernels   Operation = "purge-kernels"
 )
 
 var (
@@ -84,7 +85,7 @@ func (r PackageRequest) Validate() error {
 
 func validOperation(operation Operation) bool {
 	switch operation {
-	case Install, Remove, Purge, Reinstall, Reconfigure, Update, Downgrade, SystemUpgrade, SyncDatabase, Hold, Unhold, RepoLock, RepoUnlock, RemoveOrphans, ForceRemove, CleanCache, VerifyDatabase, ReconfigureAll:
+	case Install, Remove, Purge, Reinstall, Reconfigure, Update, Downgrade, SystemUpgrade, SyncDatabase, Hold, Unhold, RepoLock, RepoUnlock, RemoveOrphans, ForceRemove, CleanCache, VerifyDatabase, ReconfigureAll, PurgeKernels:
 		return true
 	default:
 		return false

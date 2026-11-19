@@ -23,6 +23,7 @@ import (
 
 type kernelReader interface {
 	List(context.Context) ([]kernel.Kernel, error)
+	Status(context.Context) (kernel.Status, error)
 }
 type repositoryReader interface {
 	List(context.Context) ([]repositories.Repository, error)
@@ -131,6 +132,46 @@ type KernelView struct {
 	Headers     bool   `json:"headers"`
 	CanInstall  bool   `json:"canInstall"`
 	CanRemove   bool   `json:"canRemove"`
+}
+
+type KernelMountView struct {
+	Target     string `json:"target"`
+	Source     string `json:"source"`
+	FileSystem string `json:"fileSystem"`
+	Size       uint64 `json:"size"`
+	Available  uint64 `json:"available"`
+	Mounted    bool   `json:"mounted"`
+	Separate   bool   `json:"separate"`
+}
+
+type KernelBootImageView struct {
+	Version  string `json:"version"`
+	Status   string `json:"status"`
+	Size     int64  `json:"size"`
+	CanPurge bool   `json:"canPurge"`
+}
+
+type KernelDKMSView struct {
+	Module    string `json:"module"`
+	Version   string `json:"version"`
+	Kernel    string `json:"kernel"`
+	Arch      string `json:"arch"`
+	Status    string `json:"status"`
+	Package   bool   `json:"package"`
+	Installed bool   `json:"installed"`
+}
+
+type KernelStatusView struct {
+	BootMode        string                `json:"bootMode"`
+	Bootloader      string                `json:"bootloader"`
+	Boot            KernelMountView       `json:"boot"`
+	EFI             KernelMountView       `json:"efi"`
+	InitramfsTool   string                `json:"initramfsTool"`
+	Images          []KernelBootImageView `json:"images"`
+	DKMS            []KernelDKMSView      `json:"dkms"`
+	SwitchSupported bool                  `json:"switchSupported"`
+	SwitchReason    string                `json:"switchReason"`
+	Warnings        []string              `json:"warnings"`
 }
 
 type RepositoryView struct {
@@ -402,6 +443,27 @@ func (s *SystemService) ListKernels() ([]KernelView, error) {
 		views[index] = KernelView{Package: item.Package, Version: item.Version, Series: item.Series, Type: item.Type, Size: item.Size, InstallDate: item.InstallDate, Installed: item.Installed, Running: item.Running, Meta: item.Meta, Headers: item.Headers, CanInstall: item.CanInstall, CanRemove: item.CanRemove}
 	}
 	return views, nil
+}
+
+func (s *SystemService) GetKernelStatus() (KernelStatusView, error) {
+	status, err := s.kernels.Status(context.Background())
+	if err != nil {
+		return KernelStatusView{}, err
+	}
+	view := KernelStatusView{
+		BootMode: status.BootMode, Bootloader: status.Bootloader, InitramfsTool: status.InitramfsTool,
+		Boot:            KernelMountView{Target: status.Boot.Target, Source: status.Boot.Source, FileSystem: status.Boot.FileSystem, Size: status.Boot.Size, Available: status.Boot.Available, Mounted: status.Boot.Mounted, Separate: status.Boot.Separate},
+		EFI:             KernelMountView{Target: status.EFI.Target, Source: status.EFI.Source, FileSystem: status.EFI.FileSystem, Size: status.EFI.Size, Available: status.EFI.Available, Mounted: status.EFI.Mounted, Separate: status.EFI.Separate},
+		SwitchSupported: status.SwitchSupported, SwitchReason: status.SwitchReason, Warnings: status.Warnings,
+		Images: make([]KernelBootImageView, len(status.Images)), DKMS: make([]KernelDKMSView, len(status.DKMS)),
+	}
+	for index, image := range status.Images {
+		view.Images[index] = KernelBootImageView{Version: image.Version, Status: image.Status, Size: image.Size, CanPurge: image.CanPurge}
+	}
+	for index, module := range status.DKMS {
+		view.DKMS[index] = KernelDKMSView{Module: module.Module, Version: module.Version, Kernel: module.Kernel, Arch: module.Arch, Status: module.Status, Package: module.Package, Installed: module.Installed}
+	}
+	return view, nil
 }
 
 func (s *SystemService) ReconfigureRunningKernel(packageName string) ([]KernelView, error) {

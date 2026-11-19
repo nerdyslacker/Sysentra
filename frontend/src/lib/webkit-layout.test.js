@@ -61,6 +61,10 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /\{#if tool\[0\] !== 'Clean unused Flatpaks' \|\| flatpakSourceEnabled\}/);
   assert.match(app, /kernels = await ReconfigureRunningKernel\(item\.package\)/);
   assert.match(app, /title="Re-run post-install hooks and regenerate initramfs"/);
+  assert.match(app, /GetKernelStatus\(\)/);
+  assert.match(app, />Boot images <span/);
+  assert.match(app, />DKMS <span/);
+  assert.match(app, /'purge-kernels'/);
   assert.match(app, /on:click=\{\(\) => transactionLogsVisible = !transactionLogsVisible\}/);
   assert.match(app, /Native logs/);
   assert.match(app, /transactionExecutionLogs = result\.diagnostics/);

@@ -37,6 +37,17 @@ func (c *DBusClient) checkVersion(ctx context.Context) error {
 	return nil
 }
 
+func (c *DBusClient) AuthorizeSession(ctx context.Context) error {
+	if err := c.checkVersion(ctx); err != nil {
+		return err
+	}
+	call := c.connection.Object(systemBusName, systemObjectPath).CallWithContext(ctx, systemInterface+".AuthorizeSession", 0)
+	if call.Err != nil {
+		return fmt.Errorf("authorize Sysentra session: %w", call.Err)
+	}
+	return nil
+}
+
 func (c *DBusClient) ListServices(ctx context.Context) ([]services.Service, error) {
 	if c.err != nil {
 		return nil, fmt.Errorf("connect to system service: %w", c.err)

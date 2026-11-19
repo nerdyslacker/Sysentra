@@ -29,14 +29,22 @@ func TestParseKernelsMatchesRunningSeriesAfterPackageUpdate(t *testing.T) {
 	}
 }
 
-func TestParseKernelsIncludesCustomKernelsAndDescriptionContinuations(t *testing.T) {
-	available := []byte("[-] linux-neko-rt-7.3.0_5 Custom RT kernel\n Linux kernel with headers\n[-] linux-cachy-void-7.3.0_11 CachyOS kernel\n")
+func TestParseKernelsDiscoversCustomKernelsFromRepositoryMetadata(t *testing.T) {
+	available := []byte("[-] linux-ultra-7.3.0_5 Custom RT Linux kernel precompiled for Void\n wrapped description\n[-] linux-neko-zen-7.2.6_8 Custom Zen kernel 7.2 precompiled for Void Linux\n[-] kernel-aurora-6.14.2_3 Optimized Linux kernel for workstations\n")
 	got, err := parseKernels(nil, available, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].Package != "linux-cachy-void" && got[1].Package != "linux-cachy-void" {
+	if len(got) != 3 || got[0].Package != "kernel-aurora" && got[1].Package != "kernel-aurora" && got[2].Package != "kernel-aurora" {
 		t.Fatalf("kernels = %#v", got)
+	}
+}
+
+func TestParseKernelsRejectsLinuxSupportPackages(t *testing.T) {
+	available := []byte("[-] linux-base-2026.03.23_1 Linux kernel base dependencies\n[-] linux-firmware-20260810_1 Binary firmware blobs for the Linux kernel\n[-] linux-tools-6.5_8 Linux kernel tools meta-pkg\n[-] linux-user-4.0_1 User-mode Linux kernel\n[-] linux-wifi-hotspot-4.7.2_1 Linux hotspot utility\n[-] linux-enable-ir-emitter-6.1.2_1 Enables infrared cameras\n[-] bpftool-6.5_8 Linux kernel tools for BPF\n")
+	got, err := parseKernels(nil, available, "")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("kernels=%#v err=%v", got, err)
 	}
 }
 
@@ -84,5 +92,11 @@ func TestKernelTypeRecognizesSupportedVariants(t *testing.T) {
 		if got := kernelType(name); got != want {
 			t.Fatalf("kernelType(%q)=%q want %q", name, got, want)
 		}
+	}
+}
+
+func TestKernelTypeTreatsUnknownKernelVariantAsCustom(t *testing.T) {
+	if got := kernelType("kernel-aurora"); got != "Custom" {
+		t.Fatalf("kernelType()=%q want Custom", got)
 	}
 }

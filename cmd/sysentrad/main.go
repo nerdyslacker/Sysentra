@@ -31,6 +31,7 @@ const (
 const introspection = `<node>
   <interface name="io.github.nerdyslacker.Sysentra.System1">
     <method name="Version"><arg direction="out" type="u" name="version"/></method>
+	<method name="AuthorizeSession"/>
     <method name="PlanPackage"><arg direction="in" type="s" name="request"/><arg direction="out" type="s" name="plan"/></method>
     <method name="CommitPackage"><arg direction="in" type="s" name="requestId"/><arg direction="out" type="s" name="result"/></method>
     <method name="ListServices"><arg direction="out" type="s" name="services"/></method>
@@ -49,6 +50,13 @@ type api struct {
 }
 
 func (api) Version() (uint32, *dbus.Error) { return security.HelperAPIVersion, nil }
+
+func (a api) AuthorizeSession(sender dbus.Sender) *dbus.Error {
+	if err := a.packages.Authorize(context.Background(), string(sender)); err != nil {
+		return dbus.MakeFailedError(err)
+	}
+	return nil
+}
 
 func (a api) PlanPackage(sender dbus.Sender, payload string) (string, *dbus.Error) {
 	plan, err := a.packages.PlanPackageRequest(context.Background(), string(sender), payload)

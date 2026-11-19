@@ -11,9 +11,13 @@ import (
 	"sysentra/internal/transactions"
 )
 
-type kernelReaderStub struct{ kernels []kernel.Kernel }
+type kernelReaderStub struct {
+	kernels []kernel.Kernel
+	status  kernel.Status
+}
 
 func (s kernelReaderStub) List(context.Context) ([]kernel.Kernel, error) { return s.kernels, nil }
+func (s kernelReaderStub) Status(context.Context) (kernel.Status, error) { return s.status, nil }
 
 type systemServiceClientStub struct {
 	request security.PackageRequest
@@ -63,5 +67,16 @@ func TestReconfigureRunningKernelRejectsOtherPackages(t *testing.T) {
 	kernels, err := service.ReconfigureRunningKernel("linux6.12")
 	if err != nil || client.request.Operation != security.Reconfigure || len(client.request.Packages) != 1 || client.request.Packages[0] != "linux6.12" || client.commits != 1 || len(kernels) != 2 {
 		t.Fatalf("request=%#v commits=%d kernels=%#v err=%v", client.request, client.commits, kernels, err)
+	}
+}
+
+func TestGetKernelStatusMapsBootAndDiagnostics(t *testing.T) {
+	service := NewSystemService(kernelReaderStub{status: kernel.Status{
+		BootMode: "UEFI", Bootloader: "GRUB", Boot: kernel.Mount{Target: "/boot", Source: "/dev/vda2", FileSystem: "ext4", Size: 1000, Available: 400, Mounted: true},
+		Images: []kernel.BootImage{{Version: "6.12.10_1", Status: "Running", Size: 42}}, DKMS: []kernel.DKMSModule{{Module: "zfs", Version: "2.2.3", Kernel: "6.12.10_1", Status: "installed"}},
+	}}, nil, nil, nil, nil, nil, nil, nil, &systemServiceClientStub{}, nil, nil, nil, nil)
+	got, err := service.GetKernelStatus()
+	if err != nil || got.BootMode != "UEFI" || got.Bootloader != "GRUB" || len(got.Images) != 1 || got.Images[0].Status != "Running" || len(got.DKMS) != 1 {
+		t.Fatalf("status=%#v err=%v", got, err)
 	}
 }

@@ -48,6 +48,19 @@ type downgradeRunner struct {
 	calls        []string
 }
 
+type kernelPurgeRunner struct{}
+
+func (kernelPurgeRunner) Run(_ context.Context, name string, args ...string) (runner.Result, error) {
+	switch name {
+	case vkpurge:
+		return runner.Result{Stdout: []byte("6.6.70_1\n6.6.71_1\n")}, nil
+	case "/usr/bin/uname":
+		return runner.Result{Stdout: []byte("6.6.72_1\n")}, nil
+	default:
+		return runner.Result{}, errors.New("unexpected command")
+	}
+}
+
 func (r *downgradeRunner) Run(_ context.Context, name string, args ...string) (runner.Result, error) {
 	r.calls = append(r.calls, name+" "+strings.Join(args, " "))
 	switch name {
@@ -286,6 +299,7 @@ func TestXBPSMaintenanceUsesFiniteCommands(t *testing.T) {
 		{security.CleanCache, nil, nil, []string{"--yes", "--clean-cache"}, false, xbpsRemove},
 		{security.VerifyDatabase, nil, nil, []string{"--all"}, false, xbpsPkgDB},
 		{security.ReconfigureAll, nil, nil, []string{"--force", "--all"}, false, xbpsReconfigure},
+		{security.PurgeKernels, []string{"6.12.10_1"}, nil, []string{"rm", "6.12.10_1"}, false, vkpurge},
 	}
 	for _, test := range tests {
 		request := security.PackageRequest{Version: 1, RequestID: "request-1234", Operation: test.operation, Packages: test.packages}
@@ -297,6 +311,42 @@ func TestXBPSMaintenanceUsesFiniteCommands(t *testing.T) {
 		if err != nil || name != test.command || !reflect.DeepEqual(args, test.execute) {
 			t.Fatalf("%s execution = %q %#v err=%v", test.operation, name, args, err)
 		}
+	}
+}
+
+func TestKernelPurgePreservesOneOldFallback(t *testing.T) {
+	if err := validateKernelPurge(context.Background(), kernelPurgeRunner{}, []string{"6.6.70_1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateKernelPurge(context.Background(), kernelPurgeRunner{}, []string{"6.6.70_1", "6.6.71_1"}); err == nil {
+		t.Fatal("purge accepted removal of every old fallback")
+	}
+	if err := validateKernelPurge(context.Background(), kernelPurgeRunner{}, []string{"6.6.69_1"}); err == nil {
+		t.Fatal("purge accepted a kernel not reported by vkpurge")
+	}
+}
+
+func TestKernelPackageRemovalProtectsRunningKernelAndFallback(t *testing.T) {
+	installed := map[string][]string{"linux6.12": {"6.12.10_1"}, "linux6.6": {"6.6.72_1"}, "aurora-kernel": {"6.1.90-custom"}}
+	if err := validateKernelRemovalState([]string{"linux6.12"}, installed, "6.12.10_1"); err == nil {
+		t.Fatal("running kernel package removal was accepted")
+	}
+	if err := validateKernelRemovalState([]string{"aurora-kernel"}, installed, "6.12.10_1"); err != nil {
+		t.Fatalf("safe old series removal rejected: %v", err)
+	}
+	if err := validateKernelRemovalState([]string{"linux6.6"}, map[string][]string{"linux6.12": {"6.12.10_1"}, "linux6.6": {"6.6.72_1"}}, "6.12.10_1"); err == nil {
+		t.Fatal("last fallback removal was accepted")
+	}
+	if err := validateKernelRemovalState([]string{"firefox"}, map[string][]string{"linux6.12": {"6.12.10_1"}}, "6.12.10_1"); err != nil {
+		t.Fatalf("non-kernel removal rejected: %v", err)
+	}
+}
+
+func TestParseKernelOwnersUsesBootArtifactsInsteadOfPackageNames(t *testing.T) {
+	output := []byte("malformed\naurora-kernel-6.14.2_3: /boot/vmlinuz-6.14.2-aurora (regular file)\nlinux6.12-6.12.10_1: /boot/vmlinuz-6.12.10_1 (regular file)\n")
+	got := parseKernelOwners(output)
+	if len(got) != 2 || got["aurora-kernel"][0] != "6.14.2-aurora" {
+		t.Fatalf("owners=%#v", got)
 	}
 }
 

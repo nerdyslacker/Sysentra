@@ -13,10 +13,9 @@ import (
 )
 
 var (
-	kernelName       = regexp.MustCompile(`^linux([0-9]+\.[0-9]+)(?:-[a-z0-9][a-z0-9.-]*)?$`)
-	customKernelName = regexp.MustCompile(`^linux-(?:neko-(?:rolling|rt|zen)|cachy-void)$`)
-	kernelMetaName   = regexp.MustCompile(`^linux(?:-lts|-mainline)?$`)
-	kernelSeries     = regexp.MustCompile(`^[0-9]+\.[0-9]+`)
+	kernelName     = regexp.MustCompile(`^linux([0-9]+\.[0-9]+)(?:-[a-z0-9][a-z0-9.-]*)?$`)
+	kernelMetaName = regexp.MustCompile(`^linux(?:-lts|-mainline)?$`)
+	kernelSeries   = regexp.MustCompile(`^[0-9]+\.[0-9]+`)
 )
 
 type Kernel struct {
@@ -34,16 +33,23 @@ type Kernel struct {
 	CanRemove   bool
 }
 
-type Inventory struct{ runner runner.Runner }
+type Inventory struct {
+	runner   runner.Runner
+	bootRoot string
+	efiRoot  string
+	efiMount string
+}
 
-func NewInventory(commandRunner runner.Runner) *Inventory { return &Inventory{runner: commandRunner} }
+func NewInventory(commandRunner runner.Runner) *Inventory {
+	return &Inventory{runner: commandRunner, bootRoot: "/boot", efiRoot: "/sys/firmware/efi", efiMount: "/boot/efi"}
+}
 
 func (i *Inventory) List(ctx context.Context) ([]Kernel, error) {
 	installed, err := i.runner.Run(ctx, "xbps-query", "--list-pkgs")
 	if err != nil {
 		return nil, fmt.Errorf("list installed kernels: %w", err)
 	}
-	available, err := i.runner.Run(ctx, "xbps-query", "-R", "-s", "linux")
+	available, err := i.runner.Run(ctx, "xbps-query", "--regex", "-R", "-s", "^(linux|kernel-)")
 	if err != nil {
 		return nil, fmt.Errorf("list available kernels: %w", err)
 	}
@@ -88,10 +94,10 @@ func kernelType(name string) string {
 		return "Zen"
 	case strings.HasSuffix(name, "-rt") || strings.Contains(name, "-rt-"):
 		return "Realtime"
-	case strings.Contains(name, "neko") || strings.Contains(name, "cachy"):
-		return "Custom"
-	default:
+	case kernelName.MatchString(name) || kernelMetaName.MatchString(name):
 		return "Stable"
+	default:
+		return "Custom"
 	}
 }
 
@@ -172,8 +178,13 @@ func scanKernelPackages(output []byte, installedList bool, byPackage map[string]
 			return fmt.Errorf("invalid kernel package version %q", pkgver)
 		}
 		name, version := pkgver[:separator], pkgver[separator+1:]
+		description := strings.ToLower(strings.Join(fields[2:], " "))
 		headers := strings.HasSuffix(name, "-headers")
 		baseName := strings.TrimSuffix(name, "-headers")
+		unsupported := headers && (name == "linux-api-headers" || name == "kernel-libc-headers") || !headers && kernelSupportPackage(name)
+		if !kernelPackageName(baseName, description) || unsupported {
+			continue
+		}
 		match := kernelName.FindStringSubmatch(baseName)
 		series := ""
 		meta := kernelMetaName.MatchString(name)
@@ -181,7 +192,7 @@ func scanKernelPackages(output []byte, installedList bool, byPackage map[string]
 			series = kernelSeries.FindString(version)
 		} else if match != nil {
 			series = match[1]
-		} else if customKernelName.MatchString(baseName) {
+		} else {
 			series = kernelSeries.FindString(version)
 		}
 		if series == "" {
@@ -203,6 +214,38 @@ func scanKernelPackages(output []byte, installedList bool, byPackage map[string]
 		}
 	}
 	return scanner.Err()
+}
+
+func kernelPackageName(name, description string) bool {
+	if kernelMetaName.MatchString(name) || strings.HasPrefix(name, "kernel-") {
+		return true
+	}
+	if len(name) > len("linux") && strings.HasPrefix(name, "linux") && name[len("linux")] >= '0' && name[len("linux")] <= '9' {
+		return true
+	}
+	if !strings.HasPrefix(name, "linux-") {
+		return false
+	}
+	return strings.Contains(description, "kernel") && strings.Contains(description, "precompiled") || strings.Contains(description, "kernel and modules") || strings.Contains(description, "kernel meta package")
+}
+
+func kernelSupportPackage(name string) bool {
+	excluded := map[string]bool{
+		"linux-api-headers": true, "linux-firmware": true, "linux-libre": true, "linux-base": true,
+		"linux-user": true, "linux-atm": true, "linux-utils": true, "linux-gpib": true, "linux-pam": true,
+		"linux-container": true, "linux-kmod": true, "linux-driver-management": true,
+		"linux-driver-management-32bit": true, "linux-vt-setcolors": true, "linux-wifi-hotspot": true,
+		"kernel-libc-headers": true,
+	}
+	if excluded[name] || strings.HasPrefix(name, "linux-firmware-") {
+		return true
+	}
+	for _, suffix := range []string{"-headers", "-devel", "-dbg", "-docs", "-tools", "-common", "-progs"} {
+		if strings.Contains(name, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func newerSeries(a, b string) bool {

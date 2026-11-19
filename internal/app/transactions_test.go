@@ -18,6 +18,8 @@ type transactionClientStub struct {
 	plan    transactions.Plan
 }
 
+func (s *transactionClientStub) AuthorizeSession(context.Context) error { return nil }
+
 type transactionRunnerStub struct {
 	calls  [][]string
 	result runner.Result

@@ -76,6 +76,10 @@ func TestValidateMaintenanceOperationShapes(t *testing.T) {
 	if err := request.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	request = PackageRequest{Version: APIVersion, RequestID: "request-1234", Operation: PurgeKernels, Packages: []string{"6.12.10_1"}}
+	if err := request.Validate(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestValidateDowngradeRequiresOnePackageAndTargetVersion(t *testing.T) {

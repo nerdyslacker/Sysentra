@@ -22,8 +22,13 @@ var transactionRequestID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$
 var flatpakPackageID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,255}$`)
 
 type packageTransactionClient interface {
+	AuthorizeSession(context.Context) error
 	Plan(context.Context, security.PackageRequest) (transactions.Plan, error)
 	Commit(context.Context, string) (transactions.Result, error)
+}
+
+func (s *PackageTransactionService) AuthorizeSession() error {
+	return s.client.AuthorizeSession(context.Background())
 }
 
 type flatpakTransactionPlanner interface {
