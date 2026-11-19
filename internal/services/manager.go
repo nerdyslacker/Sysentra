@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"sysentra/internal/runner"
 	"sysentra/internal/security"
@@ -15,15 +17,22 @@ import (
 type Manager struct {
 	runner                     runner.Runner
 	definitionsDir, enabledDir string
+	lookupUser                 func(string) (*user.User, error)
 }
 
 func NewManager(commandRunner runner.Runner, definitionsDir, enabledDir string) *Manager {
-	return &Manager{runner: commandRunner, definitionsDir: definitionsDir, enabledDir: enabledDir}
+	return &Manager{runner: commandRunner, definitionsDir: definitionsDir, enabledDir: enabledDir, lookupUser: user.Lookup}
 }
 
 func (m *Manager) Change(ctx context.Context, request security.ServiceRequest) error {
 	if err := request.Validate(); err != nil {
 		return err
+	}
+	if request.Operation == security.ServiceInitUser {
+		return m.initUser(request.Name)
+	}
+	if request.Operation == security.ServiceAdd {
+		return createService(m.definitionsDir, request.Name, request.Command, request.Arguments)
 	}
 	definition, err := m.definition(request.Name)
 	if err != nil {
@@ -47,6 +56,47 @@ func (m *Manager) Change(ctx context.Context, request security.ServiceRequest) e
 	default:
 		return errors.New("unsupported service operation")
 	}
+}
+
+func (m *Manager) initUser(name string) error {
+	account, err := m.lookupUser(name)
+	if err != nil {
+		return fmt.Errorf("look up user: %w", err)
+	}
+	if !filepath.IsAbs(account.HomeDir) || strings.ContainsAny(account.HomeDir, "\n\r'") {
+		return errors.New("user has an unsafe home directory")
+	}
+	serviceName := "runsvdir-" + name
+	definition := filepath.Join(m.definitionsDir, serviceName)
+	run := filepath.Join(definition, "run")
+	userServices := filepath.Join(account.HomeDir, "service")
+	script := []byte(fmt.Sprintf("#!/bin/sh\nexec chpst -u '%s' runsvdir '%s'\n", name, userServices))
+	if err := os.MkdirAll(definition, 0o755); err != nil {
+		return err
+	}
+	if existing, err := os.ReadFile(run); err == nil && string(existing) != string(script) {
+		return errors.New("existing user runsvdir service is not managed by Sysentra")
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.WriteFile(run, script, 0o755); err != nil {
+		return err
+	}
+	if err := os.Chmod(run, 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(userServices, 0o700); err != nil {
+		return err
+	}
+	uid, uidErr := strconv.Atoi(account.Uid)
+	gid, gidErr := strconv.Atoi(account.Gid)
+	if uidErr != nil || gidErr != nil {
+		return errors.New("user has invalid numeric IDs")
+	}
+	if err := os.Chown(userServices, uid, gid); err != nil {
+		return err
+	}
+	return m.enable(serviceName, definition)
 }
 
 func serviceTimeout(request security.ServiceRequest) int {

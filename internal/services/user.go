@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
 	"sysentra/internal/runner"
 	"sysentra/internal/security"
@@ -74,6 +75,8 @@ func (m *UserManager) Change(ctx context.Context, request security.ServiceReques
 		return err
 	}
 	switch request.Operation {
+	case security.ServiceAdd:
+		return createService(filepath.Join(m.root, ".disabled"), request.Name, request.Command, request.Arguments)
 	case security.ServiceEnable:
 		return m.move(request.Name, true)
 	case security.ServiceDisable:
@@ -98,6 +101,38 @@ func (m *UserManager) Change(ctx context.Context, request security.ServiceReques
 	default:
 		return errors.New("unsupported user service operation")
 	}
+}
+
+func createService(root, name, command string, arguments []string) error {
+	info, err := os.Stat(command)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return errors.New("service command is not an executable regular file")
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	target := filepath.Join(root, name)
+	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+		return errors.New("service already exists")
+	}
+	if err := os.Mkdir(target, 0o755); err != nil {
+		return err
+	}
+	values := append([]string{command}, arguments...)
+	for index := range values {
+		values[index] = shellQuote(values[index])
+	}
+	run := filepath.Join(target, "run")
+	if err := os.WriteFile(run, []byte("#!/bin/sh\nexec "+strings.Join(values, " ")+"\n"), 0o755); err != nil {
+		_ = os.Remove(run)
+		_ = os.Remove(target)
+		return err
+	}
+	return nil
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func (m *UserManager) servicePath(name string, disabled bool) (string, error) {

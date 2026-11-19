@@ -20,15 +20,17 @@ func (s kernelReaderStub) List(context.Context) ([]kernel.Kernel, error) { retur
 func (s kernelReaderStub) Status(context.Context) (kernel.Status, error) { return s.status, nil }
 
 type systemServiceClientStub struct {
-	request       security.PackageRequest
-	systemRequest security.SystemConfigRequest
-	commits       int
+	request        security.PackageRequest
+	systemRequest  security.SystemConfigRequest
+	serviceRequest security.ServiceRequest
+	commits        int
 }
 
 func (s *systemServiceClientStub) ListServices(context.Context) ([]services.Service, error) {
 	return nil, nil
 }
-func (s *systemServiceClientStub) ChangeService(context.Context, security.ServiceRequest) error {
+func (s *systemServiceClientStub) ChangeService(_ context.Context, request security.ServiceRequest) error {
+	s.serviceRequest = request
 	return nil
 }
 func (s *systemServiceClientStub) ChangeXBPSRule(context.Context, security.XBPSRuleRequest) error {
@@ -60,9 +62,23 @@ func TestCurrentMirrorBaseUsesFirstEnabledCurrentRepository(t *testing.T) {
 	}
 }
 
+func TestAddSystemServiceUsesValidatedPrivilegedRequest(t *testing.T) {
+	client := &systemServiceClientStub{}
+	service := NewSystemService(nil, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil, nil, nil)
+	if _, err := service.AddService("system", "backup", "/usr/bin/rsync", []string{"--archive", "/home/"}); err != nil {
+		t.Fatal(err)
+	}
+	if client.serviceRequest.Operation != security.ServiceAdd || client.serviceRequest.Name != "backup" || client.serviceRequest.Command != "/usr/bin/rsync" {
+		t.Fatalf("request=%#v", client.serviceRequest)
+	}
+	if _, err := service.AddService("turnstile", "backup", "/usr/bin/rsync", nil); err == nil {
+		t.Fatal("unsupported service scope accepted")
+	}
+}
+
 func TestReconfigureKernelAcceptsEveryInstalledPackage(t *testing.T) {
 	client := &systemServiceClientStub{}
-	service := NewSystemService(kernelReaderStub{kernels: []kernel.Kernel{{Package: "linux6.12", Installed: true, Running: true}, {Package: "linux6.6", Installed: true}, {Package: "linux6.1"}}}, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil)
+	service := NewSystemService(kernelReaderStub{kernels: []kernel.Kernel{{Package: "linux6.12", Installed: true, Running: true}, {Package: "linux6.6", Installed: true}, {Package: "linux6.1"}}}, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil, nil, nil)
 	if _, err := service.ReconfigureKernel("linux6.6"); err != nil || client.commits != 1 {
 		t.Fatalf("installed kernel reconfiguration failed: commits=%d err=%v", client.commits, err)
 	}
@@ -77,7 +93,7 @@ func TestReconfigureKernelAcceptsEveryInstalledPackage(t *testing.T) {
 
 func TestSetDefaultKernelRequiresInstalledNonRunningKernel(t *testing.T) {
 	client := &systemServiceClientStub{}
-	service := NewSystemService(kernelReaderStub{kernels: []kernel.Kernel{{Package: "linux6.12", Version: "6.12.10_1", Installed: true, Running: true}, {Package: "linux6.6", Version: "6.6.72_1", Installed: true}}}, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil)
+	service := NewSystemService(kernelReaderStub{kernels: []kernel.Kernel{{Package: "linux6.12", Version: "6.12.10_1", Installed: true, Running: true}, {Package: "linux6.6", Version: "6.6.72_1", Installed: true}}}, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil, nil, nil)
 	if _, err := service.SetDefaultKernel("linux6.6"); err != nil || client.systemRequest.Operation != security.KernelSetDefault || client.systemRequest.Value != "6.6.72_1" {
 		t.Fatalf("request=%#v err=%v", client.systemRequest, err)
 	}
@@ -90,7 +106,7 @@ func TestGetKernelStatusMapsBootAndDiagnostics(t *testing.T) {
 	service := NewSystemService(kernelReaderStub{status: kernel.Status{
 		BootMode: "UEFI", Bootloader: "GRUB", Boot: kernel.Mount{Target: "/boot", Source: "/dev/vda2", FileSystem: "ext4", Size: 1000, Available: 400, Mounted: true},
 		Images: []kernel.BootImage{{Version: "6.12.10_1", Status: "Running", Size: 42}}, DKMS: []kernel.DKMSModule{{Module: "zfs", Version: "2.2.3", Kernel: "6.12.10_1", Status: "installed"}},
-	}}, nil, nil, nil, nil, nil, nil, nil, &systemServiceClientStub{}, nil, nil, nil, nil)
+	}}, nil, nil, nil, nil, nil, nil, nil, &systemServiceClientStub{}, nil, nil, nil, nil, nil, nil)
 	got, err := service.GetKernelStatus()
 	if err != nil || got.BootMode != "UEFI" || got.Bootloader != "GRUB" || len(got.Images) != 1 || got.Images[0].Status != "Running" || len(got.DKMS) != 1 {
 		t.Fatalf("status=%#v err=%v", got, err)

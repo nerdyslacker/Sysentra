@@ -8,7 +8,7 @@
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
-  import { AddNFSMount, AddSambaShare, AssignAccountGroups, ChangeAccount, ChangeMirror, ChangeRepository, ChangeService, ChangeUserService, ChangeXBPSRule, CreateUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetSystemInfo, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery } from '../bindings/sysentra/internal/app/systemservice';
+  import { AddNFSMount, AddSambaShare, AddService, AssignAccountGroups, ChangeAccount, ChangeMirror, ChangeRepository, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetSystemInfo, InitializeUserServices, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
   import PackageDetailsSidebar from './components/PackageDetailsSidebar.svelte';
@@ -64,10 +64,18 @@
   let systemError = '';
   let systemRequestID = 0;
   let selectedService: ServiceView | null = null;
-  let serviceScope: 'system' | 'user' = 'system';
+  let serviceScope: 'system' | 'user' | 'turnstile' = 'system';
   let serviceAction = 'start';
   let serviceTimeout = 7;
   let serviceFilter: 'all' | 'active' | 'disabled' = 'all';
+  let turnstileReady = '';
+  let turnstileEnvironment = '';
+  let serviceDialog: HTMLDialogElement;
+  let serviceName = '';
+  let serviceCommand = '';
+  let serviceArguments = '';
+  let serviceSaving = false;
+  let serviceDialogError = '';
   let updateCount = 0;
   let packageResultCount = 0;
   let systemName = 'Linux';
@@ -217,7 +225,7 @@
     selectedService = null;
     try {
       if (view === 'Services') {
-        const result = await (serviceScope === 'system' ? ListServices() : ListUserServices());
+        const result = await (serviceScope === 'system' ? ListServices() : serviceScope === 'user' ? ListUserServices() : ListTurnstileServices());
         if (requestID === systemRequestID) services = result;
       }
       if (view === 'Kernels') {
@@ -624,14 +632,62 @@
       `${operation[0].toUpperCase()}${operation.slice(1)} the runit service ${service.name}.`,
       destructive,
       '',
-      async () => { services = await (serviceScope === 'system' ? ChangeService(service.name, operation, serviceTimeout) : ChangeUserService(service.name, operation, serviceTimeout)); }
+      async () => { services = await (serviceScope === 'system' ? ChangeService(service.name, operation, serviceTimeout) : serviceScope === 'user' ? ChangeUserService(service.name, operation, serviceTimeout) : ChangeTurnstileService(service.name, operation, serviceTimeout)); }
     );
   }
 
-  function selectServiceScope(scope: 'system' | 'user') {
+  function selectServiceScope(scope: 'system' | 'user' | 'turnstile') {
     if (scope === serviceScope) return;
     serviceScope = scope;
     void loadSystemView('Services');
+  }
+
+  function initializeUserServices() {
+    openConfirmation('Initialize user services', 'Create and enable a system runsvdir service for the current user.', false, '', async () => {
+      await InitializeUserServices();
+      services = await ListUserServices();
+    });
+  }
+
+  function openServiceDialog() {
+    serviceName = '';
+    serviceCommand = '';
+    serviceArguments = '';
+    serviceDialogError = '';
+    serviceDialog.showModal();
+  }
+
+  async function submitService() {
+    if (serviceSaving || serviceScope === 'turnstile') return;
+    serviceSaving = true;
+    serviceDialogError = '';
+    try {
+      const argumentsList = serviceArguments.split('\n').map((argument) => argument.trim()).filter(Boolean);
+      services = await AddService(serviceScope, serviceName.trim(), serviceCommand.trim(), argumentsList);
+      serviceDialog.close();
+    } catch (error) {
+      serviceDialogError = error instanceof Error ? error.message : String(error);
+    } finally {
+      serviceSaving = false;
+    }
+  }
+
+  function changeTurnstileReady(operation: 'add' | 'remove') {
+    const names = turnstileReady.split(/[\s,]+/).filter(Boolean);
+    if (!names.length) return;
+    openConfirmation(`${operation === 'add' ? 'Add' : 'Remove'} ready services`, `${operation === 'add' ? 'Add to' : 'Remove from'} turnstile core services: ${names.join(', ')}.`, operation === 'remove', '', async () => {
+      await ChangeTurnstileReady(operation, names);
+      turnstileReady = '';
+    });
+  }
+
+  function updateTurnstileEnvironment() {
+    const values = turnstileEnvironment.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean);
+    if (!values.length) return;
+    openConfirmation('Update turnstile environment', `Update ${values.length} shared environment ${values.length === 1 ? 'variable' : 'variables'}.`, false, '', async () => {
+      await UpdateTurnstileEnvironment(values);
+      turnstileEnvironment = '';
+    });
   }
 
   function ruleKindID(rule: XBPSConfigRuleView) {
@@ -1052,8 +1108,9 @@
         <p class="rounded-base border border-surface-300-700 bg-surface-100-800 p-4" aria-live="polite">Loading {activeView.toLowerCase()}…</p>
       {:else if activeView === 'Services'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="services-heading">
-          <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="services-heading" class="font-semibold">Runit services</h2><p class="text-xs text-surface-500">System actions use polkit; user services run with your session permissions.</p></div><div class="ml-auto flex flex-wrap items-center gap-2">{#if selectedService}<label class="sr-only" for="service-action">Service action</label><select id="service-action" class="select h-8 py-0 text-sm" bind:value={serviceAction}><option value="start">Start</option><option value="stop">Stop</option><option value="restart">Restart</option><option value="reload">Reload configuration</option><option value="once">Start once</option><option value="kill">Kill</option><option value="pause">Pause</option><option value="cont">Continue</option></select><label class="flex items-center gap-1 text-xs text-surface-500" for="service-timeout">Timeout <input id="service-timeout" class="input h-8 w-16 py-0 text-sm" type="number" min="1" max="60" bind:value={serviceTimeout} />s</label><button type="button" class="btn preset-filled-primary-500" on:click={() => confirmServiceOperation(selectedService, serviceAction)}>Apply</button>{/if}<button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
-          <div class="flex flex-wrap items-end gap-1 border-b border-surface-300-700 bg-surface-50-900 px-3 pt-2"><div class="flex gap-1" role="tablist" aria-label="Service scope"><button type="button" role="tab" aria-selected={serviceScope === 'system'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'system' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('system')}>System services</button><button type="button" role="tab" aria-selected={serviceScope === 'user'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'user' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('user')}>User services</button></div><div class="ml-auto flex gap-1 pb-1.5" aria-label="Service filter">{#each [['all', 'All'], ['active', 'Active'], ['disabled', 'Disabled']] as filter}<button type="button" class="rounded-base border px-2.5 py-1 text-xs {serviceFilter === filter[0] ? 'border-primary-500 bg-primary-500/10 font-semibold text-primary-700-300' : 'border-surface-300-700 hover:bg-surface-200-800'}" aria-pressed={serviceFilter === filter[0]} on:click={() => serviceFilter = filter[0] as typeof serviceFilter}>{filter[1]}</button>{/each}</div></div>
+          <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="services-heading" class="font-semibold">Runit services</h2><p class="text-xs text-surface-500">System actions use polkit; user and turnstile services use session permissions.</p></div><div class="ml-auto flex flex-wrap items-center gap-2">{#if serviceScope !== 'turnstile'}<button type="button" class="btn preset-filled-primary-500" on:click={openServiceDialog}>Add service</button>{/if}{#if serviceScope === 'user'}<button type="button" class="btn preset-tonal" on:click={initializeUserServices}>Initialize</button>{/if}{#if selectedService}<label class="sr-only" for="service-action">Service action</label><select id="service-action" class="select h-8 py-0 text-sm" bind:value={serviceAction}><option value="start">Start</option><option value="stop">Stop</option><option value="restart">Restart</option><option value="reload">Reload configuration</option><option value="once">Start once</option><option value="kill">Kill</option><option value="pause">Pause</option><option value="cont">Continue</option></select><label class="flex items-center gap-1 text-xs text-surface-500" for="service-timeout">Timeout <input id="service-timeout" class="input h-8 w-16 py-0 text-sm" type="number" min="1" max="60" bind:value={serviceTimeout} />s</label><button type="button" class="btn preset-filled-primary-500" on:click={() => confirmServiceOperation(selectedService, serviceAction)}>Apply</button>{/if}<button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
+          <div class="flex flex-wrap items-end gap-1 border-b border-surface-300-700 bg-surface-50-900 px-3 pt-2"><div class="flex gap-1" role="tablist" aria-label="Service scope"><button type="button" role="tab" aria-selected={serviceScope === 'system'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'system' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('system')}>System</button><button type="button" role="tab" aria-selected={serviceScope === 'user'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'user' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('user')}>User</button><button type="button" role="tab" aria-selected={serviceScope === 'turnstile'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'turnstile' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('turnstile')}>Turnstile</button></div><div class="ml-auto flex gap-1 pb-1.5" aria-label="Service filter">{#each [['all', 'All'], ['active', 'Active'], ['disabled', 'Disabled']] as filter}<button type="button" class="rounded-base border px-2.5 py-1 text-xs {serviceFilter === filter[0] ? 'border-primary-500 bg-primary-500/10 font-semibold text-primary-700-300' : 'border-surface-300-700 hover:bg-surface-200-800'}" aria-pressed={serviceFilter === filter[0]} on:click={() => serviceFilter = filter[0] as typeof serviceFilter}>{filter[1]}</button>{/each}</div></div>
+          {#if serviceScope === 'turnstile'}<div class="grid gap-2 border-b border-surface-300-700 p-3 md:grid-cols-2"><div class="flex gap-2"><label class="sr-only" for="turnstile-ready">Turnstile ready services</label><input id="turnstile-ready" class="input min-w-0 flex-1" placeholder="Ready services…" bind:value={turnstileReady} /><button type="button" class="btn preset-tonal" on:click={() => changeTurnstileReady('add')}>Add</button><button type="button" class="btn preset-tonal" on:click={() => changeTurnstileReady('remove')}>Remove</button></div><div class="flex gap-2"><label class="sr-only" for="turnstile-environment">Turnstile environment variables</label><input id="turnstile-environment" class="input min-w-0 flex-1" placeholder="VAR=value, OTHER=value" bind:value={turnstileEnvironment} /><button type="button" class="btn preset-tonal" on:click={updateTurnstileEnvironment}>Update environment</button></div></div>{/if}
           <div class="service-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Service</span><span>State</span><span>Enabled</span><span>PID</span><span>Command</span><span>Time</span></div>
           <div class="system-table-body">{#each filteredServices as service}
             <div class="service-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm {selectedService?.name === service.name ? 'bg-primary-500/10' : ''}">
@@ -1214,6 +1271,20 @@
       </div>
       <footer class="flex justify-end border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" on:click={() => settingsDialog.close()}>Close</button></footer>
     </div>
+  </dialog>
+
+  <dialog bind:this={serviceDialog} class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="service-dialog-title">
+    <form on:submit|preventDefault={submitService}>
+      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="service-dialog-title" class="font-semibold">Add {serviceScope} service</h2></header>
+      <div class="space-y-3 p-4">
+        <label class="block text-sm"><span class="mb-1 block font-medium">Service name</span><input class="input app-input-surface w-full" bind:value={serviceName} pattern="[A-Za-z0-9][A-Za-z0-9_.@-]*" maxlength="128" autocomplete="off" required /></label>
+        <label class="block text-sm"><span class="mb-1 block font-medium">Executable</span><input class="input app-input-surface w-full font-mono" bind:value={serviceCommand} placeholder="/usr/bin/program" pattern="/.*" maxlength="4096" autocomplete="off" required /></label>
+        <label class="block text-sm"><span class="mb-1 block font-medium">Arguments <span class="font-normal text-surface-500">(optional, one per line)</span></span><textarea class="input app-input-surface min-h-28 w-full resize-y font-mono" bind:value={serviceArguments} maxlength="16384" placeholder="--flag&#10;value with spaces"></textarea></label>
+        <p class="text-xs text-surface-500">The service is created disabled. Review it in the table, then enable it with the switch.</p>
+        {#if serviceDialogError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{serviceDialogError}</p>{/if}
+      </div>
+      <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={serviceSaving} on:click={() => serviceDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={serviceSaving || !serviceName.trim() || !serviceCommand.trim()}>{serviceSaving ? 'Adding…' : 'Add service'}</button></footer>
+    </form>
   </dialog>
 
   <dialog bind:this={historyDialog} class="m-auto w-[min(48rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="history-title">

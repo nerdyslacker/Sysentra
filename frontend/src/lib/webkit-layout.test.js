@@ -47,6 +47,7 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /selectedPackageKey/);
   assert.match(app, /PreviewMaintenance\(operation, packageIDs\)/);
   assert.match(app, /PreviewDowngrade\(pkg\.id, targetVersion\)/);
+  assert.match(details, />Downgrade<\/button>/);
   assert.match(app, /'remove-orphans'/);
   assert.match(app, /'force-remove'/);
   assert.match(component, /onExecuteSelection\('force-remove'\)\}>Force remove/);
@@ -63,6 +64,12 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /\{:else if item\.installed && !item\.meta\}<span class="inline-flex/);
   assert.match(app, /title="Re-run post-install hooks and regenerate initramfs"/);
   assert.match(app, /GetKernelStatus\(\)/);
+  assert.match(app, />Turnstile<\/button>/);
+  assert.match(app, /InitializeUserServices\(\)/);
+  assert.match(app, /services = await AddService\(serviceScope, serviceName\.trim\(\), serviceCommand\.trim\(\), argumentsList\)/);
+  assert.match(app, />Add service<\/button>/);
+  assert.match(app, /ChangeTurnstileReady\(operation, names\)/);
+  assert.match(app, /UpdateTurnstileEnvironment\(values\)/);
   assert.match(app, />Boot images <span/);
   assert.match(app, />DKMS <span/);
   assert.match(app, /'purge-kernels'/);

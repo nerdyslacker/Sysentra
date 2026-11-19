@@ -85,7 +85,7 @@ sudo xbps-install -S sysentra
 - `dbus`
 - `polkit`
 
-Optional features use `flatpak`, `fwupd`, `ufw` or `firewalld`, `samba`, and `nfs-utils`.
+Optional features use `flatpak`, `fwupd`, `turnstile`, `ufw` or `firewalld`, `samba`, and `nfs-utils`.
 
 ## Build
 

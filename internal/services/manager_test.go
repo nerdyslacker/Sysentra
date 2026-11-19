@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"os"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -14,6 +15,57 @@ import (
 type recordingRunner struct {
 	name string
 	args []string
+}
+
+func TestManagerInitializesUserRunsvdirService(t *testing.T) {
+	root := t.TempDir()
+	definitions := filepath.Join(root, "sv")
+	enabled := filepath.Join(root, "enabled")
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(enabled, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(&recordingRunner{}, definitions, enabled)
+	manager.lookupUser = func(string) (*user.User, error) {
+		return &user.User{Username: "alice", Uid: "1000", Gid: "1000", HomeDir: home}, nil
+	}
+	request := security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceInitUser, Name: "alice"}
+	if err := manager.Change(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	run := filepath.Join(definitions, "runsvdir-alice", "run")
+	contents, err := os.ReadFile(run)
+	if err != nil || string(contents) != "#!/bin/sh\nexec chpst -u 'alice' runsvdir '"+filepath.Join(home, "service")+"'\n" {
+		t.Fatalf("run=%q err=%v", contents, err)
+	}
+	if target, err := os.Readlink(filepath.Join(enabled, "runsvdir-alice")); err != nil || target != filepath.Join(definitions, "runsvdir-alice") {
+		t.Fatalf("target=%q err=%v", target, err)
+	}
+}
+
+func TestManagerCreatesDisabledSystemServiceWithQuotedArguments(t *testing.T) {
+	root := t.TempDir()
+	definitions := filepath.Join(root, "sv")
+	enabled := filepath.Join(root, "enabled")
+	executable := filepath.Join(root, "worker")
+	if err := os.MkdirAll(enabled, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(&recordingRunner{}, definitions, enabled)
+	request := security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceAdd, Name: "backup", Command: executable, Arguments: []string{"two words", "it's-safe"}}
+	if err := manager.Change(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(definitions, "backup", "run"))
+	if err != nil || string(contents) != "#!/bin/sh\nexec '"+executable+"' 'two words' 'it'\"'\"'s-safe'\n" {
+		t.Fatalf("run=%q err=%v", contents, err)
+	}
+	if _, err := os.Lstat(filepath.Join(enabled, "backup")); !os.IsNotExist(err) {
+		t.Fatalf("new service was unexpectedly enabled: %v", err)
+	}
 }
 
 func (r *recordingRunner) Run(_ context.Context, name string, args ...string) (runner.Result, error) {

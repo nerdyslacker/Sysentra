@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os/user"
 	"strings"
 	"time"
 
@@ -256,23 +258,25 @@ type DriverCatalogView struct {
 }
 
 type SystemService struct {
-	kernels      kernelReader
-	repositories repositoryReader
-	mirrors      mirrorReader
-	recovery     mirrorRecoveryStore
-	xbpsConfig   xbpsConfigReader
-	firmware     firmwareReader
-	firewall     firewallReader
-	drivers      driverReader
-	services     serviceReader
-	userServices userServiceReader
-	userManager  userServiceManager
-	shares       shareReader
-	accounts     accountReader
+	kernels           kernelReader
+	repositories      repositoryReader
+	mirrors           mirrorReader
+	recovery          mirrorRecoveryStore
+	xbpsConfig        xbpsConfigReader
+	firmware          firmwareReader
+	firewall          firewallReader
+	drivers           driverReader
+	services          serviceReader
+	userServices      userServiceReader
+	userManager       userServiceManager
+	turnstileServices userServiceReader
+	turnstileManager  *services.TurnstileManager
+	shares            shareReader
+	accounts          accountReader
 }
 
-func NewSystemService(kernels kernelReader, repos repositoryReader, mirrorCatalog mirrorReader, recovery mirrorRecoveryStore, config xbpsConfigReader, firmwareInventory firmwareReader, firewallInventory firewallReader, driverInventory driverReader, serviceInventory serviceReader, userInventory userServiceReader, userManager userServiceManager, shareInventory shareReader, accountInventory accountReader) *SystemService {
-	return &SystemService{kernels: kernels, repositories: repos, mirrors: mirrorCatalog, recovery: recovery, xbpsConfig: config, firmware: firmwareInventory, firewall: firewallInventory, drivers: driverInventory, services: serviceInventory, userServices: userInventory, userManager: userManager, shares: shareInventory, accounts: accountInventory}
+func NewSystemService(kernels kernelReader, repos repositoryReader, mirrorCatalog mirrorReader, recovery mirrorRecoveryStore, config xbpsConfigReader, firmwareInventory firmwareReader, firewallInventory firewallReader, driverInventory driverReader, serviceInventory serviceReader, userInventory userServiceReader, userManager userServiceManager, turnstileInventory userServiceReader, turnstileManager *services.TurnstileManager, shareInventory shareReader, accountInventory accountReader) *SystemService {
+	return &SystemService{kernels: kernels, repositories: repos, mirrors: mirrorCatalog, recovery: recovery, xbpsConfig: config, firmware: firmwareInventory, firewall: firewallInventory, drivers: driverInventory, services: serviceInventory, userServices: userInventory, userManager: userManager, turnstileServices: turnstileInventory, turnstileManager: turnstileManager, shares: shareInventory, accounts: accountInventory}
 }
 
 func (s *SystemService) ListAccounts() (AccountsView, error) {
@@ -395,6 +399,60 @@ func (s *SystemService) ChangeUserService(name, operation string, timeoutSeconds
 		return nil, err
 	}
 	return s.ListUserServices()
+}
+
+func (s *SystemService) AddService(scope, name, command string, arguments []string) ([]ServiceView, error) {
+	request := security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceAdd, Name: name, Command: command, Arguments: arguments}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+	switch scope {
+	case "system":
+		if err := s.services.ChangeService(context.Background(), request); err != nil {
+			return nil, err
+		}
+		return s.ListServices()
+	case "user":
+		if err := s.userManager.Change(context.Background(), request); err != nil {
+			return nil, err
+		}
+		return s.ListUserServices()
+	default:
+		return nil, errors.New("services can only be added to system or user scope")
+	}
+}
+
+func (s *SystemService) ListTurnstileServices() ([]ServiceView, error) {
+	items, err := s.turnstileServices.List(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("list turnstile services: %w", err)
+	}
+	return serviceViews(items), nil
+}
+
+func (s *SystemService) ChangeTurnstileService(name, operation string, timeoutSeconds int) ([]ServiceView, error) {
+	request := security.ServiceRequest{Version: security.APIVersion, Name: name, Operation: security.ServiceOperation(operation), TimeoutSeconds: timeoutSeconds}
+	if err := s.turnstileManager.Change(context.Background(), request); err != nil {
+		return nil, err
+	}
+	return s.ListTurnstileServices()
+}
+
+func (s *SystemService) ChangeTurnstileReady(operation string, names []string) ([]string, error) {
+	return s.turnstileManager.Ready(operation, names)
+}
+
+func (s *SystemService) UpdateTurnstileEnvironment(values []string) error {
+	return s.turnstileManager.Environment(context.Background(), values)
+}
+
+func (s *SystemService) InitializeUserServices() error {
+	account, err := user.Current()
+	if err != nil {
+		return err
+	}
+	request := security.ServiceRequest{Version: security.APIVersion, Name: account.Username, Operation: security.ServiceInitUser}
+	return s.services.ChangeService(context.Background(), request)
 }
 
 func serviceViews(items []services.Service) []ServiceView {

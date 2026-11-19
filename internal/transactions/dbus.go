@@ -65,8 +65,8 @@ func (c *DBusClient) ListServices(ctx context.Context) ([]services.Service, erro
 }
 
 func (c *DBusClient) ChangeService(ctx context.Context, request security.ServiceRequest) error {
-	if c.err != nil {
-		return fmt.Errorf("connect to system service: %w", c.err)
+	if err := c.checkVersion(ctx); err != nil {
+		return err
 	}
 	if err := request.Validate(); err != nil {
 		return err

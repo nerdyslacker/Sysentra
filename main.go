@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -42,6 +43,7 @@ func main() {
 	inventoryService := appservice.NewInventoryService()
 	commandRunner := runner.Exec{}
 	packageService := appservice.NewPackageService(backends.NewSystemXBPS(commandRunner), backends.NewFlatpak(commandRunner, backends.WithFlathubMetadata("https://flathub.org/api/v2/appstream", &http.Client{Timeout: 5 * time.Second})))
+	disableUnavailableFlatpak(packageService, exec.LookPath)
 	repositoryTrustService := appservice.NewRepositoryTrustService(repositories.NewTrustInspector(commandRunner, &http.Client{Timeout: 15 * time.Second}))
 	fontService := appservice.NewFontService(fonts.NewInventory(commandRunner))
 	transactionClient := transactions.NewSystemDBusClient()
@@ -52,7 +54,8 @@ func main() {
 		log.Fatal(err)
 	}
 	userServiceRoot := filepath.Join(home, "service")
-	systemService := appservice.NewSystemService(kernel.NewInventory(commandRunner), repositories.NewInventory(commandRunner), mirrors.NewClient(), settings.NewMirrorRecoveryStore(), xbpsconfig.NewInventory(), firmware.NewInventory(commandRunner), firewall.NewInventory(commandRunner), drivers.NewInventory(commandRunner), transactionClient, services.NewUserInventory(commandRunner, userServiceRoot, "/proc"), services.NewUserManager(commandRunner, userServiceRoot), shares.NewInventory(), accounts.NewInventory())
+	turnstileRoot := filepath.Join(home, ".config", "service")
+	systemService := appservice.NewSystemService(kernel.NewInventory(commandRunner), repositories.NewInventory(commandRunner), mirrors.NewClient(), settings.NewMirrorRecoveryStore(), xbpsconfig.NewInventory(), firmware.NewInventory(commandRunner), firewall.NewInventory(commandRunner), drivers.NewInventory(commandRunner), transactionClient, services.NewUserInventory(commandRunner, userServiceRoot, "/proc"), services.NewUserManager(commandRunner, userServiceRoot), services.NewUserInventory(commandRunner, turnstileRoot, "/proc"), services.NewTurnstileManager(commandRunner, turnstileRoot), shares.NewInventory(), accounts.NewInventory())
 	app := application.New(application.Options{
 		Name:        "Sysentra",
 		Description: "Software and system management for Void Linux",
@@ -96,5 +99,15 @@ func main() {
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+type additionalSourceToggler interface {
+	SetAdditionalSourceEnabled(string, bool) ([]appservice.AdditionalSourceView, error)
+}
+
+func disableUnavailableFlatpak(sources additionalSourceToggler, lookPath func(string) (string, error)) {
+	if _, err := lookPath("flatpak"); err != nil {
+		_, _ = sources.SetAdditionalSourceEnabled("flatpak", false)
 	}
 }

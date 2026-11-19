@@ -9,6 +9,13 @@
   export let error = '';
   export let onClose: () => void;
   export let onAction: (title: string, description: string, destructive?: boolean, operation?: string, targetVersion?: string) => void;
+  let downgradeOpen = false;
+  let downgradePackage = selected.id;
+
+  $: if (selected.id !== downgradePackage) {
+    downgradePackage = selected.id;
+    downgradeOpen = false;
+  }
 
   $: homepage = safeExternalURL(details?.homepage ?? '');
 
@@ -57,14 +64,12 @@
               <button type="button" class="btn preset-tonal" on:click={() => action(selected.repoLocked ? 'Release repository lock' : 'Lock package repository', `${selected.repoLocked ? 'Allow' : 'Restrict'} repository changes for ${selected.name}.`, false, selected.repoLocked ? 'repo-unlock' : 'repo-lock')}>{selected.repoLocked ? 'Unlock repo' : 'Repo-lock'}</button>
               <button type="button" class="btn preset-tonal" on:click={() => action('Force reinstall package', `Force reinstall ${selected.name} even when its installed version is current.`, false, 'reinstall')}>Force reinstall</button>
               <button type="button" class="btn preset-tonal" on:click={() => action('Rerun post-install configuration', `Rerun only the post-installation configuration for ${selected.name}.`, false, 'reconfigure')}>Rerun configuration</button>
+              <button type="button" class="btn preset-tonal" disabled={details.cachedVersions.length === 0} aria-expanded={downgradeOpen} title={details.cachedVersions.length === 0 ? 'No older package version is available in the XBPS cache' : 'Choose a cached package version'} on:click={() => downgradeOpen = !downgradeOpen}>Downgrade</button>
             {/if}
           {/if}
         </div>
-        {#if selected.backendId === 'xbps' && selected.installed && details.cachedVersions.length > 0}
-          <details class="rounded-base border border-surface-300-700">
-            <summary class="cursor-pointer px-3 py-2 font-medium">Cached package versions <span class="text-xs text-surface-500">({details.cachedVersions.length})</span></summary>
-            <div class="space-y-2 border-t border-surface-300-700 p-3"><p class="text-xs text-surface-500">Local XBPS cache. Sysentra verifies the archive before installation.</p><div class="flex flex-wrap gap-2">{#each details.cachedVersions as version}<button type="button" class="btn preset-tonal font-mono" on:click={() => action('Install cached package version', `Change ${selected.name} from ${details.version} to ${version}.`, false, 'downgrade', version)}>{version}</button>{/each}</div></div>
-          </details>
+        {#if selected.backendId === 'xbps' && selected.installed && downgradeOpen && details.cachedVersions.length > 0}
+          <div class="space-y-2 rounded-base border border-surface-300-700 p-3"><p class="font-medium">Choose cached version</p><p class="text-xs text-surface-500">Sysentra verifies the local package archive before installation.</p><div class="flex flex-wrap gap-2">{#each details.cachedVersions as version}<button type="button" class="btn preset-tonal font-mono" on:click={() => action('Downgrade package', `Change ${selected.name} from ${details.version} to ${version}.`, false, 'downgrade', version)}>{version}</button>{/each}</div></div>
         {/if}
         <p class="line-clamp-6 leading-relaxed" title={details.description || selected.description}>{details.description || selected.description || 'No description available.'}</p>
         <dl class="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">

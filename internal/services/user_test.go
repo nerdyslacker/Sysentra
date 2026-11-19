@@ -73,3 +73,19 @@ func TestUserManagerRejectsSymlinkService(t *testing.T) {
 		t.Fatal("symlink service was accepted")
 	}
 }
+
+func TestUserManagerCreatesDisabledService(t *testing.T) {
+	root := t.TempDir()
+	executable := filepath.Join(root, "worker")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewUserManager(&recordingRunner{}, root)
+	request := security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceAdd, Name: "backup", Command: executable, Arguments: []string{"--once"}}
+	if err := manager.Change(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".disabled", "backup", "run")); err != nil {
+		t.Fatalf("disabled service was not created: %v", err)
+	}
+}
