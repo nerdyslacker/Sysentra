@@ -88,3 +88,5 @@ go build -buildvcs=false -o bin/sysentrad ./cmd/sysentrad
 ```
 
 Install `bin/sysentrad`, the D-Bus service file, D-Bus policy, and polkit policy from `packaging/` to enable privileged actions.
+
+A starter Void Linux package template is available at `packaging/void/template`. Set its release version and checksum after publishing a tagged source archive.

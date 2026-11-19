@@ -22,6 +22,7 @@ const (
 	MirrorReset       SystemConfigOperation = "mirror-reset"
 	SambaAdd          SystemConfigOperation = "samba-add"
 	NFSAdd            SystemConfigOperation = "nfs-add"
+	KernelSetDefault  SystemConfigOperation = "kernel-set-default"
 )
 
 var shareNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _.-]{0,63}$`)
@@ -67,6 +68,10 @@ func (r SystemConfigRequest) Validate() error {
 	case NFSAdd:
 		if !validNFSSource(r.Value) || !validAbsolutePath(r.Path) || (r.Type != "nfs" && r.Type != "nfs4") || !validMountOptions(r.Options) {
 			return errors.New("a valid NFS source, target, type, and options are required")
+		}
+	case KernelSetDefault:
+		if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`).MatchString(r.Value) {
+			return errors.New("a valid installed kernel version is required")
 		}
 	default:
 		return errors.New("unsupported system configuration operation")

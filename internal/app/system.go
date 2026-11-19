@@ -466,20 +466,20 @@ func (s *SystemService) GetKernelStatus() (KernelStatusView, error) {
 	return view, nil
 }
 
-func (s *SystemService) ReconfigureRunningKernel(packageName string) ([]KernelView, error) {
+func (s *SystemService) ReconfigureKernel(packageName string) ([]KernelView, error) {
 	items, err := s.kernels.List(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	running := false
+	installed := false
 	for _, item := range items {
-		if item.Package == packageName && item.Running {
-			running = true
+		if item.Package == packageName && item.Installed {
+			installed = true
 			break
 		}
 	}
-	if !running {
-		return nil, fmt.Errorf("%s is not the running kernel package", packageName)
+	if !installed {
+		return nil, fmt.Errorf("%s is not an installed kernel package", packageName)
 	}
 	requestID, err := newRequestID()
 	if err != nil {
@@ -490,6 +490,28 @@ func (s *SystemService) ReconfigureRunningKernel(packageName string) ([]KernelVi
 		return nil, err
 	}
 	if _, err := s.services.Commit(context.Background(), requestID); err != nil {
+		return nil, err
+	}
+	return s.ListKernels()
+}
+
+func (s *SystemService) SetDefaultKernel(packageName string) ([]KernelView, error) {
+	items, err := s.kernels.List(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	version := ""
+	for _, item := range items {
+		if item.Package == packageName && item.Installed && !item.Running && !item.Meta {
+			version = item.Version
+			break
+		}
+	}
+	if version == "" {
+		return nil, fmt.Errorf("%s is not an installed non-running kernel package", packageName)
+	}
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.KernelSetDefault, Value: version}
+	if err := s.services.ChangeSystemConfig(context.Background(), request); err != nil {
 		return nil, err
 	}
 	return s.ListKernels()

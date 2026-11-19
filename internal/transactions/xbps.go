@@ -573,9 +573,6 @@ func validateKernelPurge(ctx context.Context, commandRunner runner.Runner, reque
 		return fmt.Errorf("list old kernels: %w", err)
 	}
 	old := listedValues(result.Stdout)
-	if len(old)-len(requested) < 1 {
-		return errors.New("kernel purge must preserve one old bootable fallback")
-	}
 	runningResult, err := commandRunner.Run(ctx, "/usr/bin/uname", "-r")
 	if err != nil {
 		return fmt.Errorf("detect running kernel before purge: %w", err)

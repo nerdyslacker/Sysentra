@@ -20,8 +20,9 @@ func (s kernelReaderStub) List(context.Context) ([]kernel.Kernel, error) { retur
 func (s kernelReaderStub) Status(context.Context) (kernel.Status, error) { return s.status, nil }
 
 type systemServiceClientStub struct {
-	request security.PackageRequest
-	commits int
+	request       security.PackageRequest
+	systemRequest security.SystemConfigRequest
+	commits       int
 }
 
 func (s *systemServiceClientStub) ListServices(context.Context) ([]services.Service, error) {
@@ -33,7 +34,8 @@ func (s *systemServiceClientStub) ChangeService(context.Context, security.Servic
 func (s *systemServiceClientStub) ChangeXBPSRule(context.Context, security.XBPSRuleRequest) error {
 	return nil
 }
-func (s *systemServiceClientStub) ChangeSystemConfig(context.Context, security.SystemConfigRequest) error {
+func (s *systemServiceClientStub) ChangeSystemConfig(_ context.Context, request security.SystemConfigRequest) error {
+	s.systemRequest = request
 	return nil
 }
 func (s *systemServiceClientStub) ChangeAccount(context.Context, security.AccountRequest) error {
@@ -58,15 +60,29 @@ func TestCurrentMirrorBaseUsesFirstEnabledCurrentRepository(t *testing.T) {
 	}
 }
 
-func TestReconfigureRunningKernelRejectsOtherPackages(t *testing.T) {
+func TestReconfigureKernelAcceptsEveryInstalledPackage(t *testing.T) {
 	client := &systemServiceClientStub{}
-	service := NewSystemService(kernelReaderStub{kernels: []kernel.Kernel{{Package: "linux6.12", Running: true}, {Package: "linux6.6", Installed: true}}}, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil)
-	if _, err := service.ReconfigureRunningKernel("linux6.6"); err == nil || client.commits != 0 {
-		t.Fatalf("non-running kernel reached commit: commits=%d err=%v", client.commits, err)
+	service := NewSystemService(kernelReaderStub{kernels: []kernel.Kernel{{Package: "linux6.12", Installed: true, Running: true}, {Package: "linux6.6", Installed: true}, {Package: "linux6.1"}}}, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil)
+	if _, err := service.ReconfigureKernel("linux6.6"); err != nil || client.commits != 1 {
+		t.Fatalf("installed kernel reconfiguration failed: commits=%d err=%v", client.commits, err)
 	}
-	kernels, err := service.ReconfigureRunningKernel("linux6.12")
-	if err != nil || client.request.Operation != security.Reconfigure || len(client.request.Packages) != 1 || client.request.Packages[0] != "linux6.12" || client.commits != 1 || len(kernels) != 2 {
+	kernels, err := service.ReconfigureKernel("linux6.12")
+	if err != nil || client.request.Operation != security.Reconfigure || len(client.request.Packages) != 1 || client.request.Packages[0] != "linux6.12" || client.commits != 2 || len(kernels) != 3 {
 		t.Fatalf("request=%#v commits=%d kernels=%#v err=%v", client.request, client.commits, kernels, err)
+	}
+	if _, err := service.ReconfigureKernel("linux6.1"); err == nil || client.commits != 2 {
+		t.Fatalf("available kernel reached commit: commits=%d err=%v", client.commits, err)
+	}
+}
+
+func TestSetDefaultKernelRequiresInstalledNonRunningKernel(t *testing.T) {
+	client := &systemServiceClientStub{}
+	service := NewSystemService(kernelReaderStub{kernels: []kernel.Kernel{{Package: "linux6.12", Version: "6.12.10_1", Installed: true, Running: true}, {Package: "linux6.6", Version: "6.6.72_1", Installed: true}}}, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil)
+	if _, err := service.SetDefaultKernel("linux6.6"); err != nil || client.systemRequest.Operation != security.KernelSetDefault || client.systemRequest.Value != "6.6.72_1" {
+		t.Fatalf("request=%#v err=%v", client.systemRequest, err)
+	}
+	if _, err := service.SetDefaultKernel("linux6.12"); err == nil {
+		t.Fatal("running kernel accepted as a default-kernel change")
 	}
 }
 

@@ -1,6 +1,21 @@
 package kernel
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestDetectBootloaderFindsEFIEntryDirectory(t *testing.T) {
+	root := t.TempDir()
+	efi := filepath.Join(root, "efi")
+	if err := os.MkdirAll(filepath.Join(efi, "loader", "entries"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectBootloader(filepath.Join(root, "boot"), efi); got != "systemd-boot" {
+		t.Fatalf("bootloader=%q", got)
+	}
+}
 
 func TestParseMountReportsBackingFilesystemAndSeparateMount(t *testing.T) {
 	output := []byte(`{"filesystems":[{"target":"/boot","source":"/dev/nvme0n1p1","fstype":"ext4","size":1073741824,"avail":536870912}]}`)
@@ -49,8 +64,8 @@ func TestParseDKMSPackagesListsAvailableAndInstalledModules(t *testing.T) {
 }
 
 func TestClassifyBootImages(t *testing.T) {
-	got := classifyBootImages([]string{"7.3.5_1", "7.3.4_1", "6.6.2-custom"}, "7.3.5_1", []string{"7.3.4_1"}, map[string]bool{"7.3.5_1": true})
-	if len(got) != 3 || got[0].Status != "Running" || got[1].Status != "Old" || got[1].CanPurge || got[2].Status != "Manual" {
+	got := classifyBootImages([]string{"7.3.5_1", "7.3.4_1", "7.3.3_1", "6.6.2-custom"}, "7.3.5_1", []string{"7.3.3_1", "7.3.4_1"}, map[string]bool{"7.3.5_1": true})
+	if len(got) != 4 || got[0].Status != "Running" || got[1].Status != "Old" || !got[1].CanPurge || got[2].Status != "Old" || !got[2].CanPurge || got[3].Status != "Manual" {
 		t.Fatalf("images = %#v", got)
 	}
 }

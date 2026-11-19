@@ -314,12 +314,12 @@ func TestXBPSMaintenanceUsesFiniteCommands(t *testing.T) {
 	}
 }
 
-func TestKernelPurgePreservesOneOldFallback(t *testing.T) {
+func TestKernelPurgeAcceptsEveryVersionReportedAsOld(t *testing.T) {
 	if err := validateKernelPurge(context.Background(), kernelPurgeRunner{}, []string{"6.6.70_1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateKernelPurge(context.Background(), kernelPurgeRunner{}, []string{"6.6.70_1", "6.6.71_1"}); err == nil {
-		t.Fatal("purge accepted removal of every old fallback")
+	if err := validateKernelPurge(context.Background(), kernelPurgeRunner{}, []string{"6.6.70_1", "6.6.71_1"}); err != nil {
+		t.Fatalf("purge rejected old kernels: %v", err)
 	}
 	if err := validateKernelPurge(context.Background(), kernelPurgeRunner{}, []string{"6.6.69_1"}); err == nil {
 		t.Fatal("purge accepted a kernel not reported by vkpurge")

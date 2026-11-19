@@ -56,7 +56,16 @@ type Status struct {
 }
 
 func (i *Inventory) Status(ctx context.Context) (Status, error) {
-	status := Status{BootMode: "BIOS", Bootloader: detectBootloader(i.bootRoot), InitramfsTool: "Unknown", SwitchReason: "Persistent default switching requires a verified bootloader entry and saved-default configuration."}
+	status := Status{BootMode: "BIOS", Bootloader: detectBootloader(i.bootRoot, i.efiMount), InitramfsTool: "Unknown"}
+	switch status.Bootloader {
+	case "GRUB":
+		status.SwitchSupported = pathExists("/etc/default/grub") && pathExists("/usr/bin/grub-mkconfig") && pathExists("/usr/bin/grub-editenv") && len(existingGRUBConfigs(i.bootRoot)) == 1
+	case "systemd-boot":
+		status.SwitchSupported = len(existingLoaderEntryDirs(i.bootRoot, i.efiMount)) == 1
+	}
+	if !status.SwitchSupported {
+		status.SwitchReason = "Exactly one supported GRUB or systemd-boot configuration is required."
+	}
 	if _, err := os.Stat(i.efiRoot); err == nil {
 		status.BootMode = "UEFI"
 	}
@@ -107,6 +116,24 @@ func (i *Inventory) Status(ctx context.Context) (Status, error) {
 	}
 	status.Warnings = append(status.Warnings, bootWarnings(status)...)
 	return status, nil
+}
+
+func existingGRUBConfigs(bootRoot string) []string {
+	return existingStatusPaths(false, filepath.Join(bootRoot, "grub", "grub.cfg"), filepath.Join(bootRoot, "grub2", "grub.cfg"))
+}
+
+func existingLoaderEntryDirs(bootRoot, efiMount string) []string {
+	return existingStatusPaths(true, filepath.Join(bootRoot, "loader", "entries"), filepath.Join(efiMount, "loader", "entries"))
+}
+
+func existingStatusPaths(dirs bool, paths ...string) []string {
+	found := []string{}
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && info.IsDir() == dirs {
+			found = append(found, path)
+		}
+	}
+	return found
 }
 
 func bootWarnings(status Status) []string {
@@ -246,10 +273,6 @@ func classifyBootImages(versions []string, running string, orphans []string, man
 	for _, version := range orphans {
 		orphan[version] = true
 	}
-	newestFallback := ""
-	if len(orphans) > 0 {
-		newestFallback = orphans[len(orphans)-1]
-	}
 	images := make([]BootImage, 0, len(versions))
 	for _, version := range versions {
 		image := BootImage{Version: version, Status: "Manual"}
@@ -258,7 +281,7 @@ func classifyBootImages(versions []string, running string, orphans []string, man
 			image.Status = "Running"
 		case orphan[version]:
 			image.Status = "Old"
-			image.CanPurge = version != newestFallback
+			image.CanPurge = true
 		case managed[version]:
 			image.Status = "Managed"
 		}
@@ -276,9 +299,9 @@ func classifyBootImages(versions []string, running string, orphans []string, man
 	return images
 }
 
-func detectBootloader(bootRoot string) string {
-	grub := pathExists(filepath.Join(bootRoot, "grub", "grub.cfg"))
-	systemdBoot := pathExists(filepath.Join(bootRoot, "loader", "entries"))
+func detectBootloader(bootRoot, efiMount string) string {
+	grub := len(existingGRUBConfigs(bootRoot)) > 0
+	systemdBoot := len(existingLoaderEntryDirs(bootRoot, efiMount)) > 0
 	switch {
 	case grub && systemdBoot:
 		return "GRUB + systemd-boot"

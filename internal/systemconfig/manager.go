@@ -22,10 +22,12 @@ type Manager struct {
 	runner                      runner.Runner
 	configurationDir, vendorDir string
 	sambaConfig, fstab          string
+	bootRoot, efiMount          string
+	grubDefaults                string
 }
 
 func NewManager(commandRunner runner.Runner, configurationDir, vendorDir, sambaConfig, fstab string) *Manager {
-	return &Manager{runner: commandRunner, configurationDir: configurationDir, vendorDir: vendorDir, sambaConfig: sambaConfig, fstab: fstab}
+	return &Manager{runner: commandRunner, configurationDir: configurationDir, vendorDir: vendorDir, sambaConfig: sambaConfig, fstab: fstab, bootRoot: "/boot", efiMount: "/boot/efi", grubDefaults: "/etc/default/grub"}
 }
 
 func (m *Manager) Change(request security.SystemConfigRequest) error {
@@ -43,6 +45,8 @@ func (m *Manager) Change(request security.SystemConfigRequest) error {
 		return m.addSamba(request)
 	case security.NFSAdd:
 		return m.addNFS(request)
+	case security.KernelSetDefault:
+		return m.setDefaultKernel(request.Value)
 	default:
 		return errors.New("unsupported system configuration operation")
 	}

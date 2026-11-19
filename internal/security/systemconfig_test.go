@@ -9,6 +9,7 @@ func TestSystemConfigRequestValidation(t *testing.T) {
 		{Version: APIVersion, Operation: RepositoryAdd, Value: "https://repo.example.org/current", TrustConfirmed: true},
 		{Version: APIVersion, Operation: SambaAdd, Value: "Media", Path: "/srv/media"},
 		{Version: APIVersion, Operation: NFSAdd, Value: "server:/data", Path: "/mnt/data", Type: "nfs4", Options: "rw,_netdev"},
+		{Version: APIVersion, Operation: KernelSetDefault, Value: "6.12.10_1"},
 	}
 	for _, request := range valid {
 		if err := request.Validate(); err != nil {
@@ -20,6 +21,7 @@ func TestSystemConfigRequestValidation(t *testing.T) {
 		{Version: APIVersion, Operation: MirrorUse, Value: "http://insecure.example.org"},
 		{Version: APIVersion, Operation: SambaAdd, Value: "bad\nname", Path: "/srv/data"},
 		{Version: APIVersion, Operation: NFSAdd, Value: "server:/data", Path: "relative", Type: "nfs4"},
+		{Version: APIVersion, Operation: KernelSetDefault, Value: "../../boot"},
 	}
 	for _, request := range invalid {
 		if err := request.Validate(); err == nil {
