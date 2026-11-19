@@ -52,6 +52,21 @@ Sysentra is a system management center for Void Linux and derivatives.
 </details>
 
 
+## Installation
+
+First add LazyLinux repository:
+
+```sh
+printf '%s\n' 'repository=https://github.com/lazylinuxos/lazy-repo/releases/latest/download' \
+  | sudo tee /etc/xbps.d/99-repository-lazy.conf
+```
+
+Now execute install command:
+
+```sh
+sudo xbps-install -S sysentra
+```
+
 ## Build dependencies
 
 - `base-devel`

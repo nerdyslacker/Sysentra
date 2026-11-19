@@ -2,7 +2,7 @@
 pkgname=sysentra
 version=0.1.0
 revision=1
-hostmakedepends="go nodejs pkg-config"
+hostmakedepends="go wails3 nodejs pkg-config"
 makedepends="gtk4-devel libwebkitgtk60-devel"
 depends="dbus polkit"
 short_desc="System management center for Void Linux"
@@ -10,9 +10,11 @@ maintainer="nerdyslacker <karyan40024@gmail.com>"
 license="BSD-2-Clause"
 homepage="https://github.com/nerdyslacker/Sysentra"
 distfiles="https://github.com/nerdyslacker/Sysentra/archive/refs/tags/v${version}.tar.gz"
-checksum=SKIP
+checksum=92f18da40956758906d5b6caeb5eb1ddb5865055152610bc822ab097096f7f1b
+nopie=yes
 
 do_build() {
+	wails3 generate bindings -ts .
 	npm ci --prefix frontend
 	npm run --prefix frontend build
 	go build -buildvcs=false -o sysentra .
@@ -26,6 +28,6 @@ do_install() {
 	vinstall packaging/dbus/io.github.nerdyslacker.Sysentra.System1.service 644 usr/share/dbus-1/system-services
 	vinstall packaging/polkit/io.github.nerdyslacker.sysentra.policy 644 usr/share/polkit-1/actions
 	vinstall packaging/linux/io.github.nerdyslacker.Sysentra.desktop 644 usr/share/applications
-	vinstall assets/sysentra.png 644 usr/share/icons/hicolor/654x654/apps sysentra.png
+	vinstall assets/sysentra.png 644 usr/share/icons/hicolor/scalable/apps sysentra.png
 	vlicense LICENSE
 }
