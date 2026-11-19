@@ -29,6 +29,9 @@ type systemServiceClientStub struct {
 func (s *systemServiceClientStub) ListServices(context.Context) ([]services.Service, error) {
 	return nil, nil
 }
+func (s *systemServiceClientStub) ServiceDetails(context.Context, string) (services.Details, error) {
+	return services.Details{}, nil
+}
 func (s *systemServiceClientStub) ChangeService(_ context.Context, request security.ServiceRequest) error {
 	s.serviceRequest = request
 	return nil
@@ -49,7 +52,7 @@ func (s *systemServiceClientStub) Plan(_ context.Context, request security.Packa
 }
 func (s *systemServiceClientStub) Commit(_ context.Context, _ string) (transactions.Result, error) {
 	s.commits++
-	return transactions.Result{}, nil
+	return transactions.Result{Diagnostics: []string{"regenerating initramfs", "done"}}, nil
 }
 
 func TestCurrentMirrorBaseUsesFirstEnabledCurrentRepository(t *testing.T) {
@@ -82,9 +85,9 @@ func TestReconfigureKernelAcceptsEveryInstalledPackage(t *testing.T) {
 	if _, err := service.ReconfigureKernel("linux6.6"); err != nil || client.commits != 1 {
 		t.Fatalf("installed kernel reconfiguration failed: commits=%d err=%v", client.commits, err)
 	}
-	kernels, err := service.ReconfigureKernel("linux6.12")
-	if err != nil || client.request.Operation != security.Reconfigure || len(client.request.Packages) != 1 || client.request.Packages[0] != "linux6.12" || client.commits != 2 || len(kernels) != 3 {
-		t.Fatalf("request=%#v commits=%d kernels=%#v err=%v", client.request, client.commits, kernels, err)
+	result, err := service.ReconfigureKernel("linux6.12")
+	if err != nil || client.request.Operation != security.Reconfigure || len(client.request.Packages) != 1 || client.request.Packages[0] != "linux6.12" || client.commits != 2 || len(result.Diagnostics) != 2 {
+		t.Fatalf("request=%#v commits=%d result=%#v err=%v", client.request, client.commits, result, err)
 	}
 	if _, err := service.ReconfigureKernel("linux6.1"); err == nil || client.commits != 2 {
 		t.Fatalf("available kernel reached commit: commits=%d err=%v", client.commits, err)

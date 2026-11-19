@@ -33,6 +33,13 @@ func (i *UserInventory) List(ctx context.Context) ([]Service, error) {
 	return inventory.populate(ctx, items), nil
 }
 
+func (i *UserInventory) Details(name string) (Details, error) {
+	if details, err := serviceDetails(i.root, name, false); err == nil {
+		return details, nil
+	}
+	return serviceDetails(filepath.Join(i.root, ".disabled"), name, false)
+}
+
 func ListUserRunitServices(root string) ([]Service, error) {
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {

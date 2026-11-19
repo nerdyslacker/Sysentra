@@ -35,6 +35,7 @@ const introspection = `<node>
     <method name="PlanPackage"><arg direction="in" type="s" name="request"/><arg direction="out" type="s" name="plan"/></method>
     <method name="CommitPackage"><arg direction="in" type="s" name="requestId"/><arg direction="out" type="s" name="result"/></method>
     <method name="ListServices"><arg direction="out" type="s" name="services"/></method>
+    <method name="ServiceDetails"><arg direction="in" type="s" name="name"/><arg direction="out" type="s" name="details"/></method>
     <method name="ChangeService"><arg direction="in" type="s" name="request"/></method>
     <method name="ChangeXBPSRule"><arg direction="in" type="s" name="request"/></method>
     <method name="ChangeSystemConfig"><arg direction="in" type="s" name="request"/></method>
@@ -88,6 +89,18 @@ func (a api) ListServices() (string, *dbus.Error) {
 		return "", dbus.MakeFailedError(err)
 	}
 	encoded, err := json.Marshal(items)
+	if err != nil {
+		return "", dbus.MakeFailedError(err)
+	}
+	return string(encoded), nil
+}
+
+func (a api) ServiceDetails(sender dbus.Sender, name string) (string, *dbus.Error) {
+	details, err := a.services.Details(context.Background(), string(sender), name)
+	if err != nil {
+		return "", dbus.MakeFailedError(err)
+	}
+	encoded, err := json.Marshal(details)
 	if err != nil {
 		return "", dbus.MakeFailedError(err)
 	}

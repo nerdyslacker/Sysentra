@@ -64,6 +64,22 @@ func (c *DBusClient) ListServices(ctx context.Context) ([]services.Service, erro
 	return items, nil
 }
 
+func (c *DBusClient) ServiceDetails(ctx context.Context, name string) (services.Details, error) {
+	if err := c.checkVersion(ctx); err != nil {
+		return services.Details{}, err
+	}
+	var encoded string
+	call := c.connection.Object(systemBusName, systemObjectPath).CallWithContext(ctx, systemInterface+".ServiceDetails", 0, name)
+	if err := call.Store(&encoded); err != nil {
+		return services.Details{}, fmt.Errorf("read service details: %w", err)
+	}
+	var details services.Details
+	if err := json.Unmarshal([]byte(encoded), &details); err != nil {
+		return services.Details{}, fmt.Errorf("decode service details: %w", err)
+	}
+	return details, nil
+}
+
 func (c *DBusClient) ChangeService(ctx context.Context, request security.ServiceRequest) error {
 	if err := c.checkVersion(ctx); err != nil {
 		return err

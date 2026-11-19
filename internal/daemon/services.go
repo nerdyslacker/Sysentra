@@ -13,6 +13,7 @@ import (
 
 type ServiceInventory interface {
 	List(context.Context) ([]services.Service, error)
+	Details(string) (services.Details, error)
 }
 
 type ServiceManager interface {
@@ -31,6 +32,17 @@ func NewServiceController(authorizer Authorizer, inventory ServiceInventory, man
 
 func (s *ServiceController) List(ctx context.Context) ([]services.Service, error) {
 	return s.inventory.List(ctx)
+}
+
+func (s *ServiceController) Details(ctx context.Context, sender, name string) (services.Details, error) {
+	request := security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceStart, Name: name}
+	if err := request.Validate(); err != nil {
+		return services.Details{}, err
+	}
+	if err := s.authorizer.Authorize(ctx, sender, security.ServiceManagementAction, true); err != nil {
+		return services.Details{}, err
+	}
+	return s.inventory.Details(name)
 }
 
 func (s *ServiceController) Change(ctx context.Context, sender, payload string) error {

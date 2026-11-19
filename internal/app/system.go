@@ -51,6 +51,7 @@ type driverReader interface {
 }
 type serviceReader interface {
 	ListServices(context.Context) ([]services.Service, error)
+	ServiceDetails(context.Context, string) (services.Details, error)
 	Plan(context.Context, security.PackageRequest) (transactions.Plan, error)
 	Commit(context.Context, string) (transactions.Result, error)
 	ChangeService(context.Context, security.ServiceRequest) error
@@ -60,6 +61,7 @@ type serviceReader interface {
 }
 type userServiceReader interface {
 	List(context.Context) ([]services.Service, error)
+	Details(string) (services.Details, error)
 }
 type userServiceManager interface {
 	Change(context.Context, security.ServiceRequest) error
@@ -80,6 +82,13 @@ type ServiceView struct {
 	PID        int    `json:"pid"`
 	Command    string `json:"command"`
 	Time       string `json:"time"`
+}
+
+type ServiceDetailsView struct {
+	Definition string   `json:"definition"`
+	RunScript  string   `json:"runScript"`
+	LogPath    string   `json:"logPath"`
+	Logs       []string `json:"logs"`
 }
 
 type SambaShareView struct {
@@ -371,6 +380,25 @@ func (s *SystemService) ListServices() ([]ServiceView, error) {
 	return serviceViews(items), nil
 }
 
+func (s *SystemService) GetServiceDetails(scope, name string) (ServiceDetailsView, error) {
+	var details services.Details
+	var err error
+	switch scope {
+	case "system":
+		details, err = s.services.ServiceDetails(context.Background(), name)
+	case "user":
+		details, err = s.userServices.Details(name)
+	case "turnstile":
+		details, err = s.turnstileServices.Details(name)
+	default:
+		err = errors.New("unsupported service scope")
+	}
+	if err != nil {
+		return ServiceDetailsView{}, err
+	}
+	return ServiceDetailsView{Definition: details.Definition, RunScript: details.RunScript, LogPath: details.LogPath, Logs: details.Logs}, nil
+}
+
 func (s *SystemService) ChangeService(name, operation string, timeoutSeconds int) ([]ServiceView, error) {
 	request := security.ServiceRequest{Version: security.APIVersion, Name: name, Operation: security.ServiceOperation(operation), TimeoutSeconds: timeoutSeconds}
 	if err := request.Validate(); err != nil {
@@ -524,10 +552,10 @@ func (s *SystemService) GetKernelStatus() (KernelStatusView, error) {
 	return view, nil
 }
 
-func (s *SystemService) ReconfigureKernel(packageName string) ([]KernelView, error) {
+func (s *SystemService) ReconfigureKernel(packageName string) (PackageTransactionResultView, error) {
 	items, err := s.kernels.List(context.Background())
 	if err != nil {
-		return nil, err
+		return PackageTransactionResultView{}, err
 	}
 	installed := false
 	for _, item := range items {
@@ -537,20 +565,21 @@ func (s *SystemService) ReconfigureKernel(packageName string) ([]KernelView, err
 		}
 	}
 	if !installed {
-		return nil, fmt.Errorf("%s is not an installed kernel package", packageName)
+		return PackageTransactionResultView{}, fmt.Errorf("%s is not an installed kernel package", packageName)
 	}
 	requestID, err := newRequestID()
 	if err != nil {
-		return nil, err
+		return PackageTransactionResultView{}, err
 	}
 	request := security.PackageRequest{Version: security.APIVersion, RequestID: requestID, Operation: security.Reconfigure, Packages: []string{packageName}}
 	if _, err := s.services.Plan(context.Background(), request); err != nil {
-		return nil, err
+		return PackageTransactionResultView{}, err
 	}
-	if _, err := s.services.Commit(context.Background(), requestID); err != nil {
-		return nil, err
+	result, err := s.services.Commit(context.Background(), requestID)
+	if err != nil {
+		return PackageTransactionResultView{}, err
 	}
-	return s.ListKernels()
+	return PackageTransactionResultView{RequestID: result.RequestID, Operation: string(result.Operation), Diagnostics: result.Diagnostics}, nil
 }
 
 func (s *SystemService) SetDefaultKernel(packageName string) ([]KernelView, error) {

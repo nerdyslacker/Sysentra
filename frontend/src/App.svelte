@@ -2,17 +2,18 @@
   import { onMount } from 'svelte';
   import { Browser } from '@wailsio/runtime';
 
-  import type { AdditionalSourceView, DriverDeviceView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
+  import type { AdditionalSourceView, DriverDeviceView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
   import { Discover, FindOwningPackage, GetPackageDetails, ListAdditionalSources, ListInstalled, ListUpdates, SetAdditionalSourceEnabled } from '../bindings/sysentra/internal/app/packageservice';
   import { ListSystemFonts } from '../bindings/sysentra/internal/app/fontservice';
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
-  import { AddNFSMount, AddSambaShare, AddService, AssignAccountGroups, ChangeAccount, ChangeMirror, ChangeRepository, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetSystemInfo, InitializeUserServices, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
+  import { AddNFSMount, AddSambaShare, AddService, AssignAccountGroups, ChangeAccount, ChangeMirror, ChangeRepository, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
   import PackageDetailsSidebar from './components/PackageDetailsSidebar.svelte';
   import NavigationIcon from './components/NavigationIcon.svelte';
+  import ServiceDetailsSidebar from './components/ServiceDetailsSidebar.svelte';
   import { updatePackageAfterTransaction } from './lib/package-list.js';
 
   const navigation = ['Discover', 'Installed', 'Updates', 'Repositories', 'XBPS Config', 'Mirrors', 'Services', 'Users & Groups', 'Firewall', 'Samba Server', 'NFS Client', 'Kernels', 'Firmware', 'Drivers'];
@@ -64,6 +65,9 @@
   let systemError = '';
   let systemRequestID = 0;
   let selectedService: ServiceView | null = null;
+  let serviceDetails: ServiceDetailsView | null = null;
+  let serviceDetailsLoading = false;
+  let serviceDetailsError = '';
   let serviceScope: 'system' | 'user' | 'turnstile' = 'system';
   let serviceAction = 'start';
   let serviceTimeout = 7;
@@ -71,6 +75,12 @@
   let turnstileReady = '';
   let turnstileEnvironment = '';
   let serviceDialog: HTMLDialogElement;
+  let kernelReconfigureDialog: HTMLDialogElement;
+  let kernelReconfigureTitle = '';
+  let kernelReconfigureLogs: string[] = [];
+  let kernelReconfigureLoading = false;
+  let kernelReconfigureError = '';
+  let kernelReconfigureSucceeded = false;
   let serviceName = '';
   let serviceCommand = '';
   let serviceArguments = '';
@@ -517,15 +527,37 @@
   }
 
   async function reconfigureKernel(item: KernelView) {
-    if (systemLoading) return;
-    systemLoading = true;
-    systemError = '';
+    if (kernelReconfigureLoading) return;
+    kernelReconfigureTitle = `Reconfigure ${item.package}`;
+    kernelReconfigureLogs = [`Running post-install hooks for ${item.package}…`];
+    kernelReconfigureError = '';
+    kernelReconfigureSucceeded = false;
+    kernelReconfigureLoading = true;
+    kernelReconfigureDialog.showModal();
     try {
-      kernels = await ReconfigureKernel(item.package);
+      const result = await ReconfigureKernel(item.package);
+      kernelReconfigureLogs = result.diagnostics.length ? result.diagnostics : ['Command completed without output.'];
+      kernelReconfigureSucceeded = true;
     } catch (error) {
-      systemError = error instanceof Error ? error.message : String(error);
+      kernelReconfigureError = error instanceof Error ? error.message : String(error);
     } finally {
-      systemLoading = false;
+      kernelReconfigureLoading = false;
+    }
+  }
+
+  async function openServiceDetails(service: ServiceView) {
+    const scope = serviceScope;
+    selectedService = service;
+    serviceDetails = null;
+    serviceDetailsError = '';
+    serviceDetailsLoading = true;
+    try {
+      const details = await GetServiceDetails(scope, service.name);
+      if (selectedService?.name === service.name && serviceScope === scope) serviceDetails = details;
+    } catch (error) {
+      if (selectedService?.name === service.name && serviceScope === scope) serviceDetailsError = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (selectedService?.name === service.name && serviceScope === scope) serviceDetailsLoading = false;
     }
   }
 
@@ -632,7 +664,11 @@
       `${operation[0].toUpperCase()}${operation.slice(1)} the runit service ${service.name}.`,
       destructive,
       '',
-      async () => { services = await (serviceScope === 'system' ? ChangeService(service.name, operation, serviceTimeout) : serviceScope === 'user' ? ChangeUserService(service.name, operation, serviceTimeout) : ChangeTurnstileService(service.name, operation, serviceTimeout)); }
+      async () => {
+        services = await (serviceScope === 'system' ? ChangeService(service.name, operation, serviceTimeout) : serviceScope === 'user' ? ChangeUserService(service.name, operation, serviceTimeout) : ChangeTurnstileService(service.name, operation, serviceTimeout));
+        const updated = services.find((item) => item.name === service.name);
+        if (updated) await openServiceDetails(updated);
+      }
     );
   }
 
@@ -1107,19 +1143,19 @@
       {:else if systemLoading}
         <p class="rounded-base border border-surface-300-700 bg-surface-100-800 p-4" aria-live="polite">Loading {activeView.toLowerCase()}…</p>
       {:else if activeView === 'Services'}
-        <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="services-heading">
+        <div class="flex min-h-0 flex-1 gap-3"><section class="system-table min-w-0 flex-1 rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="services-heading">
           <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="services-heading" class="font-semibold">Runit services</h2><p class="text-xs text-surface-500">System actions use polkit; user and turnstile services use session permissions.</p></div><div class="ml-auto flex flex-wrap items-center gap-2">{#if serviceScope !== 'turnstile'}<button type="button" class="btn preset-filled-primary-500" on:click={openServiceDialog}>Add service</button>{/if}{#if serviceScope === 'user'}<button type="button" class="btn preset-tonal" on:click={initializeUserServices}>Initialize</button>{/if}{#if selectedService}<label class="sr-only" for="service-action">Service action</label><select id="service-action" class="select h-8 py-0 text-sm" bind:value={serviceAction}><option value="start">Start</option><option value="stop">Stop</option><option value="restart">Restart</option><option value="reload">Reload configuration</option><option value="once">Start once</option><option value="kill">Kill</option><option value="pause">Pause</option><option value="cont">Continue</option></select><label class="flex items-center gap-1 text-xs text-surface-500" for="service-timeout">Timeout <input id="service-timeout" class="input h-8 w-16 py-0 text-sm" type="number" min="1" max="60" bind:value={serviceTimeout} />s</label><button type="button" class="btn preset-filled-primary-500" on:click={() => confirmServiceOperation(selectedService, serviceAction)}>Apply</button>{/if}<button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
           <div class="flex flex-wrap items-end gap-1 border-b border-surface-300-700 bg-surface-50-900 px-3 pt-2"><div class="flex gap-1" role="tablist" aria-label="Service scope"><button type="button" role="tab" aria-selected={serviceScope === 'system'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'system' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('system')}>System</button><button type="button" role="tab" aria-selected={serviceScope === 'user'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'user' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('user')}>User</button><button type="button" role="tab" aria-selected={serviceScope === 'turnstile'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'turnstile' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('turnstile')}>Turnstile</button></div><div class="ml-auto flex gap-1 pb-1.5" aria-label="Service filter">{#each [['all', 'All'], ['active', 'Active'], ['disabled', 'Disabled']] as filter}<button type="button" class="rounded-base border px-2.5 py-1 text-xs {serviceFilter === filter[0] ? 'border-primary-500 bg-primary-500/10 font-semibold text-primary-700-300' : 'border-surface-300-700 hover:bg-surface-200-800'}" aria-pressed={serviceFilter === filter[0]} on:click={() => serviceFilter = filter[0] as typeof serviceFilter}>{filter[1]}</button>{/each}</div></div>
           {#if serviceScope === 'turnstile'}<div class="grid gap-2 border-b border-surface-300-700 p-3 md:grid-cols-2"><div class="flex gap-2"><label class="sr-only" for="turnstile-ready">Turnstile ready services</label><input id="turnstile-ready" class="input min-w-0 flex-1" placeholder="Ready services…" bind:value={turnstileReady} /><button type="button" class="btn preset-tonal" on:click={() => changeTurnstileReady('add')}>Add</button><button type="button" class="btn preset-tonal" on:click={() => changeTurnstileReady('remove')}>Remove</button></div><div class="flex gap-2"><label class="sr-only" for="turnstile-environment">Turnstile environment variables</label><input id="turnstile-environment" class="input min-w-0 flex-1" placeholder="VAR=value, OTHER=value" bind:value={turnstileEnvironment} /><button type="button" class="btn preset-tonal" on:click={updateTurnstileEnvironment}>Update environment</button></div></div>{/if}
           <div class="service-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Service</span><span>State</span><span>Enabled</span><span>PID</span><span>Command</span><span>Time</span></div>
           <div class="system-table-body">{#each filteredServices as service}
-            <div class="service-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm {selectedService?.name === service.name ? 'bg-primary-500/10' : ''}">
-              <button type="button" class="truncate text-left font-medium hover:text-primary-600" aria-pressed={selectedService?.name === service.name} on:click={() => selectedService = service}>{service.name}</button>{#if !service.enabled}<span class="text-surface-500">---</span>{:else}<span class="w-fit rounded-full border px-2 py-0.5 text-xs {service.status === 'Running' ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : service.status === 'Stopped' ? 'border-error-500/40 bg-error-500/10 text-error-700-300' : 'border-warning-500/40 bg-warning-500/10 text-warning-700-300'}">{service.status === 'Running' ? '✔ running' : service.status === 'Stopped' ? '■ stopped' : `? ${service.status.toLowerCase()}`}</span>{/if}
+            <div class="service-grid grid cursor-pointer items-center border-b border-surface-200-800 px-3 py-2 text-sm hover:bg-primary-500/5 {selectedService?.name === service.name ? 'bg-primary-500/10' : ''}" role="button" aria-label={`Open ${service.name} service details`} tabindex="0" on:click={() => openServiceDetails(service)} on:keydown={(event) => { if (event.key === 'Enter' || event.key === ' ') openServiceDetails(service); }}>
+              <button type="button" class="truncate text-left font-medium hover:text-primary-600" aria-pressed={selectedService?.name === service.name} on:click|stopPropagation={() => openServiceDetails(service)}>{service.name}</button>{#if !service.enabled}<span class="text-surface-500">---</span>{:else}<span class="w-fit rounded-full border px-2 py-0.5 text-xs {service.status === 'Running' ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : service.status === 'Stopped' ? 'border-error-500/40 bg-error-500/10 text-error-700-300' : 'border-warning-500/40 bg-warning-500/10 text-warning-700-300'}">{service.status === 'Running' ? '✔ running' : service.status === 'Stopped' ? '■ stopped' : `? ${service.status.toLowerCase()}`}</span>{/if}
               <button type="button" role="switch" aria-checked={service.enabled} aria-label={`${service.nextAction} ${service.name}`} class="relative h-5 w-9 rounded-full {service.enabled ? 'bg-success-600' : 'bg-surface-400'}" on:click|stopPropagation={() => confirmServiceOperation(service, service.nextAction)}><span class="absolute top-0.5 size-4 rounded-full bg-white transition-[left] {service.enabled ? 'left-[1.125rem]' : 'left-0.5'}"></span></button>
               <span class="font-mono text-xs">{service.pid || '-'}</span><span class="service-command truncate font-mono text-xs" title={service.command}>{service.command || '-'}</span><span class="font-mono text-xs">{service.time || '-'}</span>
             </div>
           {/each}</div>
-        </section>
+        </section>{#if selectedService}<ServiceDetailsSidebar selected={selectedService} details={serviceDetails} loading={serviceDetailsLoading} error={serviceDetailsError} onClose={() => { selectedService = null; serviceDetails = null; }} onReload={() => openServiceDetails(selectedService!)} onAction={(operation) => confirmServiceOperation(selectedService, operation)} />{/if}</div>
       {:else if activeView === 'Users & Groups'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="accounts-heading">
           <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="accounts-heading" class="font-semibold">Users &amp; Groups</h2><p class="text-xs text-surface-500">Local accounts from /etc/passwd and /etc/group.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openAccountDialog(accountTab === 'users' ? 'user-add' : 'group-add')}>Add {accountTab === 'users' ? 'user' : 'group'}</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
@@ -1285,6 +1321,14 @@
       </div>
       <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={serviceSaving} on:click={() => serviceDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={serviceSaving || !serviceName.trim() || !serviceCommand.trim()}>{serviceSaving ? 'Adding…' : 'Add service'}</button></footer>
     </form>
+  </dialog>
+
+  <dialog bind:this={kernelReconfigureDialog} class="m-auto w-[min(48rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="kernel-reconfigure-title">
+    <div><header class="border-b border-surface-300-700 px-4 py-3"><h2 id="kernel-reconfigure-title" class="font-semibold">{kernelReconfigureTitle}</h2></header><div class="space-y-3 p-4">
+      {#if kernelReconfigureLoading}<div class="space-y-2" role="status" aria-live="polite"><p class="text-sm">Regenerating kernel configuration and initramfs…</p><div class="h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></div></div>{/if}
+      <section class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50" aria-label="Kernel reconfiguration logs"><pre class="max-h-[50vh] min-h-36 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{kernelReconfigureLogs.join('\n')}</pre></section>
+      {#if kernelReconfigureError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-sm text-error-700-300" role="alert">Reconfiguration failed: {kernelReconfigureError}</p>{:else if kernelReconfigureSucceeded}<p class="rounded-base border border-success-500/40 bg-success-500/10 p-3 text-sm text-success-700-300" role="status">Kernel reconfiguration completed.</p>{/if}
+    </div><footer class="flex justify-end border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={kernelReconfigureLoading} on:click={() => kernelReconfigureDialog.close()}>Close</button></footer></div>
   </dialog>
 
   <dialog bind:this={historyDialog} class="m-auto w-[min(48rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="history-title">

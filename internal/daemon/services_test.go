@@ -12,6 +12,9 @@ import (
 type serviceInventoryStub struct{ items []services.Service }
 
 func (s serviceInventoryStub) List(context.Context) ([]services.Service, error) { return s.items, nil }
+func (s serviceInventoryStub) Details(string) (services.Details, error) {
+	return services.Details{Logs: []string{"running"}}, nil
+}
 
 type serviceManagerStub struct {
 	request security.ServiceRequest
@@ -46,5 +49,17 @@ func TestServiceControllerRejectsInvalidOrDeniedChange(t *testing.T) {
 	authorizer.err = errors.New("denied")
 	if err := controller.Change(context.Background(), ":1.42", `{"version":1,"operation":"restart","name":"sshd"}`); err == nil || manager.calls != 0 {
 		t.Fatalf("denied request reached manager: calls=%d err=%v", manager.calls, err)
+	}
+}
+
+func TestServiceControllerAuthorizesDetails(t *testing.T) {
+	authorizer := &authorizationStub{}
+	controller := NewServiceController(authorizer, serviceInventoryStub{}, &serviceManagerStub{})
+	details, err := controller.Details(context.Background(), ":1.42", "sshd")
+	if err != nil || len(details.Logs) != 1 || authorizer.action != security.ServiceManagementAction {
+		t.Fatalf("details=%#v action=%q err=%v", details, authorizer.action, err)
+	}
+	if _, err := controller.Details(context.Background(), ":1.42", "../sshd"); err == nil {
+		t.Fatal("invalid service name accepted")
 	}
 }

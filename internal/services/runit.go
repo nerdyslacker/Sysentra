@@ -43,6 +43,10 @@ func (i *Inventory) List(ctx context.Context) ([]Service, error) {
 	return i.populate(ctx, items), nil
 }
 
+func (i *Inventory) Details(name string) (Details, error) {
+	return serviceDetails(i.definitionsDir, name, true)
+}
+
 func (i *Inventory) populate(ctx context.Context, items []Service) []Service {
 	for index := range items {
 		if !items[index].Enabled {

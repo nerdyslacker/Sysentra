@@ -60,7 +60,10 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /\{#if flatpakSourceEnabled\}<section[^>]*aria-labelledby="flatpak-remotes-heading"/);
   assert.match(app, /flatpakSourceEnabled \? ListFlatpakRemotes\(\)\.catch\(\(\) => \[\]\) : Promise\.resolve\(\[\]\)/);
   assert.match(app, /\{#if tool\[0\] !== 'Clean unused Flatpaks' \|\| flatpakSourceEnabled\}/);
-  assert.match(app, /kernels = await ReconfigureKernel\(item\.package\)/);
+  assert.match(app, /const result = await ReconfigureKernel\(item\.package\)/);
+  assert.match(app, /kernelReconfigureLogs = result\.diagnostics/);
+  assert.match(app, /<ServiceDetailsSidebar/);
+  assert.match(app, /GetServiceDetails\(scope, service\.name\)/);
   assert.match(app, /\{:else if item\.installed && !item\.meta\}<span class="inline-flex/);
   assert.match(app, /title="Re-run post-install hooks and regenerate initramfs"/);
   assert.match(app, /GetKernelStatus\(\)/);
