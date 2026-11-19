@@ -27,6 +27,7 @@
         <button type="button" class="btn preset-tonal" on:click={() => onAction('once')}>Run once</button>
       {/if}
       <button type="button" class="btn preset-tonal" on:click={() => onAction(selected.enabled ? 'disable' : 'enable')}>{selected.enabled ? 'Disable' : 'Enable'}</button>
+      {#if details?.managed}<button type="button" class="btn border-error-500/50 text-error-700-300 hover:bg-error-500/10" disabled={selected.enabled} title={selected.enabled ? 'Disable this service before deleting it' : 'Delete this Sysentra-created service'} on:click={() => onAction('delete')}>Delete</button>{/if}
       <button type="button" class="btn preset-tonal" on:click={onReload} disabled={loading}>Refresh</button>
     </div>
     <dl class="mb-4 grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">

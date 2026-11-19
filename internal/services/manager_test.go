@@ -60,11 +60,48 @@ func TestManagerCreatesDisabledSystemServiceWithQuotedArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	contents, err := os.ReadFile(filepath.Join(definitions, "backup", "run"))
-	if err != nil || string(contents) != "#!/bin/sh\nexec '"+executable+"' 'two words' 'it'\"'\"'s-safe'\n" {
+	if err != nil || string(contents) != "#!/bin/sh\n# Created with Sysentra\nexec '"+executable+"' 'two words' 'it'\"'\"'s-safe' 2>&1\n" {
 		t.Fatalf("run=%q err=%v", contents, err)
 	}
 	if _, err := os.Lstat(filepath.Join(enabled, "backup")); !os.IsNotExist(err) {
 		t.Fatalf("new service was unexpectedly enabled: %v", err)
+	}
+}
+
+func TestManagerDeletesOnlyDisabledSysentraService(t *testing.T) {
+	root := t.TempDir()
+	definitions, enabled := filepath.Join(root, "sv"), filepath.Join(root, "enabled")
+	executable := filepath.Join(root, "worker")
+	if err := os.MkdirAll(enabled, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(&recordingRunner{}, definitions, enabled)
+	if err := manager.Change(context.Background(), security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceAdd, Name: "backup", Command: executable}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Change(context.Background(), security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceEnable, Name: "backup"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Change(context.Background(), security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceDelete, Name: "backup"}); err == nil {
+		t.Fatal("enabled managed service was deleted")
+	}
+	if err := manager.Change(context.Background(), security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceDisable, Name: "backup"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Change(context.Background(), security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceDelete, Name: "backup"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(definitions, "backup")); !os.IsNotExist(err) {
+		t.Fatalf("managed service remains: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(definitions, "sshd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Change(context.Background(), security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceDelete, Name: "sshd"}); err == nil {
+		t.Fatal("unmanaged service was deleted")
 	}
 }
 

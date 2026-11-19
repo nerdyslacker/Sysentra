@@ -3,7 +3,7 @@ package security
 import "testing"
 
 func TestServiceRequestAllowsFiniteRunitOperations(t *testing.T) {
-	for _, operation := range []ServiceOperation{ServiceEnable, ServiceDisable, ServiceStart, ServiceStop, ServiceRestart, ServiceReload, ServiceOnce, ServiceKill, ServicePause, ServiceContinue, ServiceInitUser} {
+	for _, operation := range []ServiceOperation{ServiceEnable, ServiceDisable, ServiceStart, ServiceStop, ServiceRestart, ServiceReload, ServiceOnce, ServiceKill, ServicePause, ServiceContinue, ServiceInitUser, ServiceDelete} {
 		if err := (ServiceRequest{Version: APIVersion, Operation: operation, Name: "dbus-1"}).Validate(); err != nil {
 			t.Fatalf("%s: %v", operation, err)
 		}
@@ -23,13 +23,15 @@ func TestServiceRequestRejectsPathAndUnknownOperation(t *testing.T) {
 }
 
 func TestServiceRequestValidatesCreateCommand(t *testing.T) {
-	valid := ServiceRequest{Version: APIVersion, Operation: ServiceAdd, Name: "backup", Command: "/usr/bin/rsync", Arguments: []string{"--archive", "/home/"}}
+	valid := ServiceRequest{Version: APIVersion, Operation: ServiceAdd, Name: "backup", Command: "/usr/bin/rsync", Arguments: []string{"--archive", "/home/"}, User: "backup", Group: "storage"}
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	for _, request := range []ServiceRequest{
 		{Version: APIVersion, Operation: ServiceAdd, Name: "backup", Command: "rsync"},
 		{Version: APIVersion, Operation: ServiceAdd, Name: "backup", Command: "/usr/bin/rsync", Arguments: []string{"bad\x00arg"}},
+		{Version: APIVersion, Operation: ServiceAdd, Name: "backup", Command: "/usr/bin/rsync", Group: "storage"},
+		{Version: APIVersion, Operation: ServiceAdd, Name: "backup", Command: "/usr/bin/rsync", User: "../root"},
 		{Version: APIVersion, Operation: ServiceStart, Name: "backup", Command: "/usr/bin/rsync"},
 	} {
 		if err := request.Validate(); err == nil {

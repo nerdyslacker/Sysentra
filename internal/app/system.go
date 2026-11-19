@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"os/user"
 	"strings"
 	"time"
@@ -89,6 +90,7 @@ type ServiceDetailsView struct {
 	RunScript  string   `json:"runScript"`
 	LogPath    string   `json:"logPath"`
 	Logs       []string `json:"logs"`
+	Managed    bool     `json:"managed"`
 }
 
 type SambaShareView struct {
@@ -396,7 +398,7 @@ func (s *SystemService) GetServiceDetails(scope, name string) (ServiceDetailsVie
 	if err != nil {
 		return ServiceDetailsView{}, err
 	}
-	return ServiceDetailsView{Definition: details.Definition, RunScript: details.RunScript, LogPath: details.LogPath, Logs: details.Logs}, nil
+	return ServiceDetailsView{Definition: details.Definition, RunScript: details.RunScript, LogPath: details.LogPath, Logs: details.Logs, Managed: details.Managed}, nil
 }
 
 func (s *SystemService) ChangeService(name, operation string, timeoutSeconds int) ([]ServiceView, error) {
@@ -429,8 +431,16 @@ func (s *SystemService) ChangeUserService(name, operation string, timeoutSeconds
 	return s.ListUserServices()
 }
 
-func (s *SystemService) AddService(scope, name, command string, arguments []string) ([]ServiceView, error) {
-	request := security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceAdd, Name: name, Command: command, Arguments: arguments}
+func (s *SystemService) AddService(scope, name, commandLine, username, group string) ([]ServiceView, error) {
+	fields := strings.Fields(commandLine)
+	if len(fields) == 0 {
+		return nil, errors.New("service command is required")
+	}
+	command, err := exec.LookPath(fields[0])
+	if err != nil {
+		return nil, fmt.Errorf("service executable %q was not found", fields[0])
+	}
+	request := security.ServiceRequest{Version: security.APIVersion, Operation: security.ServiceAdd, Name: name, Command: command, Arguments: fields[1:], User: strings.TrimSpace(username), Group: strings.TrimSpace(group)}
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ test('keeps the virtual viewport bounded and observes window-driven resizing', (
   assert.match(component, /new ResizeObserver\(updateViewport\)/);
   assert.match(component, /observer\.disconnect\(\)/);
   assert.match(component, /viewport\.scrollTop = 0/);
+  assert.match(component, /const overscanRows = 24/);
   assert.match(component, /package-table flex/);
   assert.match(styles, /container-type: inline-size/);
   assert.match(styles, /@container package-table/);
@@ -32,6 +33,8 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /scheduleSearch\(event\.currentTarget\.value\)/);
   assert.match(app, /setTimeout\(\(\) => globalQuery = value, 120\)/);
   assert.match(app, /function selectView\(view: string\) \{\s*clearTimeout\(searchTimer\);\s*searchInput = '';\s*globalQuery = '';/);
+  assert.match(app, /finally \{\s*loadPackages\(\);\s*refreshUpdateCount\(\);\s*\}/);
+  assert.doesNotMatch(app, /loadPackages\(\)\.then\(\(\) => refreshUpdateCount\(\)\)/);
   assert.match(details, /PackageStatusBadges/);
   assert.match(details, /details\?\.iconDataUrl/);
   assert.match(details, /Browser\.OpenURL/);
@@ -69,8 +72,11 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /GetKernelStatus\(\)/);
   assert.match(app, />Turnstile<\/button>/);
   assert.match(app, /InitializeUserServices\(\)/);
-  assert.match(app, /services = await AddService\(serviceScope, serviceName\.trim\(\), serviceCommand\.trim\(\), argumentsList\)/);
+  assert.match(app, /services = await AddService\(serviceScope, serviceName\.trim\(\), serviceCommand\.trim\(\), serviceUser\.trim\(\), serviceGroup\.trim\(\)\)/);
+  assert.match(app, />Command<\/span><input[^>]*placeholder="program --flag"/);
   assert.match(app, />Add service<\/button>/);
+  assert.doesNotMatch(app, /id="service-action"/);
+  assert.match(app, /operation === 'delete'/);
   assert.match(app, /ChangeTurnstileReady\(operation, names\)/);
   assert.match(app, /UpdateTurnstileEnvironment\(values\)/);
   assert.match(app, />Boot images <span/);

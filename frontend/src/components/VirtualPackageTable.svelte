@@ -6,6 +6,7 @@
   import PackageStatusBadges from './PackageStatusBadges.svelte';
 
   const rowHeight = 44;
+  const overscanRows = 24;
   export let packages: PackageView[];
   export let title: string;
   export let description: string;
@@ -32,7 +33,7 @@
   $: sourcedPackages = filterPackageSource(searchedPackages, sourceFilter);
   $: filteredPackages = filterPackageState(sourcedPackages, stateFilter, selected);
   $: resultCount = filteredPackages.length;
-  $: range = visibleRange(scrollTop, viewportHeight, filteredPackages.length, rowHeight, 8);
+  $: range = visibleRange(scrollTop, viewportHeight, filteredPackages.length, rowHeight, overscanRows);
   $: visiblePackages = filteredPackages.slice(range.start, range.end);
   $: selectionAction = action === 'install' && selectedItems[0]?.installed ? 'remove' : action;
   $: packages, action, (selected = new Set<string>(), selectedItems = [], sourceFilter = '');

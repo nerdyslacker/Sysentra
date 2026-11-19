@@ -24,6 +24,7 @@ const (
 	ServiceContinue ServiceOperation = "cont"
 	ServiceInitUser ServiceOperation = "init-user"
 	ServiceAdd      ServiceOperation = "add"
+	ServiceDelete   ServiceOperation = "delete"
 )
 
 var serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}$`)
@@ -35,6 +36,8 @@ type ServiceRequest struct {
 	TimeoutSeconds int              `json:"timeoutSeconds,omitempty"`
 	Command        string           `json:"command,omitempty"`
 	Arguments      []string         `json:"arguments,omitempty"`
+	User           string           `json:"user,omitempty"`
+	Group          string           `json:"group,omitempty"`
 }
 
 func (r ServiceRequest) Validate() error {
@@ -59,13 +62,22 @@ func (r ServiceRequest) Validate() error {
 				return errors.New("invalid service command argument")
 			}
 		}
+		if r.User != "" && !accountNamePattern.MatchString(r.User) {
+			return errors.New("invalid service user")
+		}
+		if r.Group != "" && !accountNamePattern.MatchString(r.Group) {
+			return errors.New("invalid service group")
+		}
+		if r.Group != "" && r.User == "" {
+			return errors.New("service group requires a user")
+		}
 		return nil
 	}
-	if r.Command != "" || len(r.Arguments) != 0 {
+	if r.Command != "" || len(r.Arguments) != 0 || r.User != "" || r.Group != "" {
 		return errors.New("service command is only valid when adding a service")
 	}
 	switch r.Operation {
-	case ServiceEnable, ServiceDisable, ServiceStart, ServiceStop, ServiceRestart, ServiceReload, ServiceOnce, ServiceKill, ServicePause, ServiceContinue, ServiceInitUser:
+	case ServiceEnable, ServiceDisable, ServiceStart, ServiceStop, ServiceRestart, ServiceReload, ServiceOnce, ServiceKill, ServicePause, ServiceContinue, ServiceInitUser, ServiceDelete:
 		return nil
 	default:
 		return errors.New("unsupported service operation")

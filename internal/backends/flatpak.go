@@ -200,8 +200,14 @@ func (f *Flatpak) list(ctx context.Context, installed bool, args ...string) ([]c
 	if err := json.Unmarshal(result.Stdout, &items); err != nil {
 		return nil, fmt.Errorf("parse Flatpak output: %w", err)
 	}
-	packages := make([]core.Package, len(items))
-	for index, item := range items {
+	packages := make([]core.Package, 0, len(items))
+	seen := make(map[core.PackageRef]bool, len(items))
+	for _, item := range items {
+		ref := core.PackageRef{BackendID: "flatpak", ID: item.ID}
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
 		name := item.Name
 		if name == "" {
 			name = item.ID
@@ -210,8 +216,8 @@ func (f *Flatpak) list(ctx context.Context, installed bool, args ...string) ([]c
 		if scope == "" {
 			scope = "system"
 		}
-		packages[index] = core.Package{
-			Ref:          core.PackageRef{BackendID: "flatpak", ID: item.ID},
+		packages = append(packages, core.Package{
+			Ref:          ref,
 			Name:         name,
 			Description:  item.Description,
 			Version:      item.Version,
@@ -219,7 +225,7 @@ func (f *Flatpak) list(ctx context.Context, installed bool, args ...string) ([]c
 			Origin:       item.Origin,
 			Scope:        scope,
 			Installed:    installed,
-		}
+		})
 	}
 	return packages, nil
 }

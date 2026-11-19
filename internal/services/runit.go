@@ -48,14 +48,23 @@ func (i *Inventory) Details(name string) (Details, error) {
 }
 
 func (i *Inventory) populate(ctx context.Context, items []Service) []Service {
+	paths := make([]string, 0, len(items))
+	for index := range items {
+		if items[index].Enabled {
+			paths = append(paths, filepath.Join(i.enabledDir, items[index].Name))
+		}
+	}
+	statuses := map[string]runtimeStatus{}
+	if len(paths) > 0 {
+		result, _ := i.runner.Run(ctx, "/usr/bin/sv", append([]string{"status"}, paths...)...)
+		statuses = parseStatus(string(append(result.Stdout, result.Stderr...)))
+	}
 	for index := range items {
 		if !items[index].Enabled {
 			items[index].State = "Stopped"
 			continue
 		}
-		result, _ := i.runner.Run(ctx, "/usr/bin/sv", "status", i.enabledDir+"/"+items[index].Name)
-		output := append(append([]byte{}, result.Stdout...), result.Stderr...)
-		if runtime, ok := parseStatus(string(output))[items[index].Name]; ok {
+		if runtime, ok := statuses[items[index].Name]; ok {
 			items[index].State, items[index].PID, items[index].Time = runtime.State, runtime.PID, runtime.Time
 			if runtime.PID > 0 {
 				if command, err := os.ReadFile(i.procDir + "/" + strconv.Itoa(runtime.PID) + "/cmdline"); err == nil {

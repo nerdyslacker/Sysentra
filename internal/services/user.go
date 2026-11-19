@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -83,7 +84,13 @@ func (m *UserManager) Change(ctx context.Context, request security.ServiceReques
 	}
 	switch request.Operation {
 	case security.ServiceAdd:
-		return createService(filepath.Join(m.root, ".disabled"), request.Name, request.Command, request.Arguments)
+		return createService(filepath.Join(m.root, ".disabled"), request.Name, request.Command, request.Arguments, request.User, request.Group)
+	case security.ServiceDelete:
+		path, err := m.servicePath(request.Name, true)
+		if err != nil {
+			return errors.New("service must be disabled before deletion")
+		}
+		return removeManagedService(path)
 	case security.ServiceEnable:
 		return m.move(request.Name, true)
 	case security.ServiceDisable:
@@ -110,7 +117,7 @@ func (m *UserManager) Change(ctx context.Context, request security.ServiceReques
 	}
 }
 
-func createService(root, name, command string, arguments []string) error {
+func createService(root, name, command string, arguments []string, username, group string) error {
 	info, err := os.Stat(command)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 		return errors.New("service command is not an executable regular file")
@@ -129,10 +136,28 @@ func createService(root, name, command string, arguments []string) error {
 	for index := range values {
 		values[index] = shellQuote(values[index])
 	}
+	prefix := ""
+	if username != "" {
+		if _, err := user.Lookup(username); err != nil {
+			_ = os.RemoveAll(target)
+			return errors.New("service user does not exist")
+		}
+		identity := username
+		if group != "" {
+			if _, err := user.LookupGroup(group); err == nil {
+				identity += ":" + group
+			}
+		}
+		prefix = "chpst -u " + shellQuote(identity) + " "
+	}
 	run := filepath.Join(target, "run")
-	if err := os.WriteFile(run, []byte("#!/bin/sh\nexec "+strings.Join(values, " ")+"\n"), 0o755); err != nil {
-		_ = os.Remove(run)
-		_ = os.Remove(target)
+	contents := "#!/bin/sh\n# Created with Sysentra\nexec " + prefix + strings.Join(values, " ") + " 2>&1\n"
+	if err := os.WriteFile(run, []byte(contents), 0o755); err != nil {
+		_ = os.RemoveAll(target)
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(target, managedServiceMarker), []byte("sysentra\n"), 0o600); err != nil {
+		_ = os.RemoveAll(target)
 		return err
 	}
 	return nil

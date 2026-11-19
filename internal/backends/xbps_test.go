@@ -66,6 +66,18 @@ type sequenceRunner struct {
 	calls   int
 }
 
+type repositoryRunner struct{}
+
+func (repositoryRunner) Run(_ context.Context, _ string, args ...string) (runner.Result, error) {
+	if reflect.DeepEqual(args, []string{"--list-repos"}) {
+		return runner.Result{Stdout: []byte("14841 https://repo.example/current (RSA signed)\n67 https://repo.example/current/nonfree (RSA signed)\n")}, nil
+	}
+	if len(args) > 2 && args[2] == "https://repo.example/current" {
+		return runner.Result{Stdout: []byte("[-] 0ad-0.28.0_1 Strategy game\n[*] bash-5.3_2 Shell\n")}, nil
+	}
+	return runner.Result{Stdout: []byte("[-] UEFITool-A76_1 Firmware image tool\n")}, nil
+}
+
 func (r *sequenceRunner) Run(context.Context, string, ...string) (runner.Result, error) {
 	reply := r.replies[r.calls]
 	r.calls++
@@ -173,12 +185,7 @@ func TestXBPSSearch(t *testing.T) {
 }
 
 func TestXBPSListAvailable(t *testing.T) {
-	command := &sequenceRunner{replies: []runnerReply{
-		{result: runner.Result{Stdout: []byte("14841 https://repo.example/current (RSA signed)\n67 https://repo.example/current/nonfree (RSA signed)\n")}},
-		{result: runner.Result{Stdout: []byte("[-] 0ad-0.28.0_1 Strategy game\n[*] bash-5.3_2 Shell\n")}},
-		{result: runner.Result{Stdout: []byte("[-] UEFITool-A76_1 Firmware image tool\n")}},
-	}}
-	backend := NewXBPS(command)
+	backend := NewXBPS(repositoryRunner{})
 
 	packages, err := backend.ListAvailable(context.Background())
 	if err != nil {
@@ -189,9 +196,6 @@ func TestXBPSListAvailable(t *testing.T) {
 	}
 	if packages[0].Origin != "https://repo.example/current" || packages[2].Origin != "https://repo.example/current/nonfree" {
 		t.Fatalf("package origins = %#v", packages)
-	}
-	if command.calls != 3 {
-		t.Fatalf("calls = %d, want 3", command.calls)
 	}
 }
 

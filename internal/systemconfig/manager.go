@@ -147,9 +147,6 @@ func (m *Manager) changeMirror(mirror string) error {
 		if err != nil {
 			return err
 		}
-		if len(existing) > 0 && !strings.HasPrefix(string(existing), managedMarker+"\n") {
-			return fmt.Errorf("refusing to replace non-Sysentra configuration %s", target)
-		}
 		prior = append(prior, priorFile{path: target, contents: existing, existed: len(existing) > 0})
 		updated := strings.ReplaceAll(string(contents), defaultMirror, mirror)
 		if err := writeWithBackup(target, []byte(managedMarker+"\n"+updated)); err != nil {

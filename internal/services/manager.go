@@ -32,13 +32,18 @@ func (m *Manager) Change(ctx context.Context, request security.ServiceRequest) e
 		return m.initUser(request.Name)
 	}
 	if request.Operation == security.ServiceAdd {
-		return createService(m.definitionsDir, request.Name, request.Command, request.Arguments)
+		return createService(m.definitionsDir, request.Name, request.Command, request.Arguments, request.User, request.Group)
 	}
 	definition, err := m.definition(request.Name)
 	if err != nil {
 		return err
 	}
 	switch request.Operation {
+	case security.ServiceDelete:
+		if _, err := os.Lstat(filepath.Join(m.enabledDir, request.Name)); !os.IsNotExist(err) {
+			return errors.New("service must be disabled before deletion")
+		}
+		return removeManagedService(definition)
 	case security.ServiceEnable:
 		return m.enable(request.Name, definition)
 	case security.ServiceDisable:

@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	"sysentra/internal/kernel"
@@ -68,13 +70,13 @@ func TestCurrentMirrorBaseUsesFirstEnabledCurrentRepository(t *testing.T) {
 func TestAddSystemServiceUsesValidatedPrivilegedRequest(t *testing.T) {
 	client := &systemServiceClientStub{}
 	service := NewSystemService(nil, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil, nil, nil)
-	if _, err := service.AddService("system", "backup", "/usr/bin/rsync", []string{"--archive", "/home/"}); err != nil {
+	if _, err := service.AddService("system", "backup", "sh --archive /home/", "root", "wheel"); err != nil {
 		t.Fatal(err)
 	}
-	if client.serviceRequest.Operation != security.ServiceAdd || client.serviceRequest.Name != "backup" || client.serviceRequest.Command != "/usr/bin/rsync" {
+	if client.serviceRequest.Operation != security.ServiceAdd || client.serviceRequest.Name != "backup" || !strings.HasSuffix(client.serviceRequest.Command, "/sh") || !reflect.DeepEqual(client.serviceRequest.Arguments, []string{"--archive", "/home/"}) || client.serviceRequest.User != "root" || client.serviceRequest.Group != "wheel" {
 		t.Fatalf("request=%#v", client.serviceRequest)
 	}
-	if _, err := service.AddService("turnstile", "backup", "/usr/bin/rsync", nil); err == nil {
+	if _, err := service.AddService("turnstile", "backup", "sh", "", ""); err == nil {
 		t.Fatal("unsupported service scope accepted")
 	}
 }

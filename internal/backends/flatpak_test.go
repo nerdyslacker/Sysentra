@@ -53,6 +53,19 @@ func TestFlatpakListAvailable(t *testing.T) {
 	}
 }
 
+func TestFlatpakListAvailableDeduplicatesApplicationBranches(t *testing.T) {
+	command := &stubRunner{result: runner.Result{Stdout: []byte(`[{"application_id":"org.example.App","name":"Example","version":"2.5","branch":"stable","origin":"flathub"},{"application_id":"org.example.App","name":"Example","version":"3.0","branch":"beta","origin":"flathub"},{"application_id":"org.example.Other","name":"Other","version":"1.0","origin":"flathub"}]`)}}
+	backend := NewFlatpak(command)
+
+	packages, err := backend.ListAvailable(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packages) != 2 || packages[0].Ref.ID != "org.example.App" || packages[0].Version != "2.5" || packages[1].Ref.ID != "org.example.Other" {
+		t.Fatalf("unexpected packages: %#v", packages)
+	}
+}
+
 func TestFlatpakListUpdatesUsesRemoteVersion(t *testing.T) {
 	command := &stubRunner{result: runner.Result{Stdout: []byte(`[{"application_id":"org.example.App","name":"Example","version":"2.5","origin":"flathub","installation":"system"}]`)}}
 	backend := NewFlatpak(command)

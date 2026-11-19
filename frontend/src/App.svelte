@@ -69,8 +69,7 @@
   let serviceDetailsLoading = false;
   let serviceDetailsError = '';
   let serviceScope: 'system' | 'user' | 'turnstile' = 'system';
-  let serviceAction = 'start';
-  let serviceTimeout = 7;
+  const serviceTimeout = 7;
   let serviceFilter: 'all' | 'active' | 'disabled' = 'all';
   let turnstileReady = '';
   let turnstileEnvironment = '';
@@ -83,7 +82,8 @@
   let kernelReconfigureSucceeded = false;
   let serviceName = '';
   let serviceCommand = '';
-  let serviceArguments = '';
+  let serviceUser = '';
+  let serviceGroup = '';
   let serviceSaving = false;
   let serviceDialogError = '';
   let updateCount = 0;
@@ -658,7 +658,7 @@
 
   function confirmServiceOperation(service: ServiceView | null, operation: string) {
     if (!service) return;
-    const destructive = operation === 'stop' || operation === 'disable';
+    const destructive = operation === 'stop' || operation === 'disable' || operation === 'delete';
     openConfirmation(
       `${operation[0].toUpperCase()}${operation.slice(1)} ${service.name}`,
       `${operation[0].toUpperCase()}${operation.slice(1)} the runit service ${service.name}.`,
@@ -668,6 +668,10 @@
         services = await (serviceScope === 'system' ? ChangeService(service.name, operation, serviceTimeout) : serviceScope === 'user' ? ChangeUserService(service.name, operation, serviceTimeout) : ChangeTurnstileService(service.name, operation, serviceTimeout));
         const updated = services.find((item) => item.name === service.name);
         if (updated) await openServiceDetails(updated);
+        else if (operation === 'delete') {
+          selectedService = null;
+          serviceDetails = null;
+        }
       }
     );
   }
@@ -688,7 +692,8 @@
   function openServiceDialog() {
     serviceName = '';
     serviceCommand = '';
-    serviceArguments = '';
+    serviceUser = '';
+    serviceGroup = '';
     serviceDialogError = '';
     serviceDialog.showModal();
   }
@@ -698,8 +703,7 @@
     serviceSaving = true;
     serviceDialogError = '';
     try {
-      const argumentsList = serviceArguments.split('\n').map((argument) => argument.trim()).filter(Boolean);
-      services = await AddService(serviceScope, serviceName.trim(), serviceCommand.trim(), argumentsList);
+      services = await AddService(serviceScope, serviceName.trim(), serviceCommand.trim(), serviceUser.trim(), serviceGroup.trim());
       serviceDialog.close();
     } catch (error) {
       serviceDialogError = error instanceof Error ? error.message : String(error);
@@ -1144,7 +1148,7 @@
         <p class="rounded-base border border-surface-300-700 bg-surface-100-800 p-4" aria-live="polite">Loading {activeView.toLowerCase()}…</p>
       {:else if activeView === 'Services'}
         <div class="flex min-h-0 flex-1 gap-3"><section class="system-table min-w-0 flex-1 rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="services-heading">
-          <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="services-heading" class="font-semibold">Runit services</h2><p class="text-xs text-surface-500">System actions use polkit; user and turnstile services use session permissions.</p></div><div class="ml-auto flex flex-wrap items-center gap-2">{#if serviceScope !== 'turnstile'}<button type="button" class="btn preset-filled-primary-500" on:click={openServiceDialog}>Add service</button>{/if}{#if serviceScope === 'user'}<button type="button" class="btn preset-tonal" on:click={initializeUserServices}>Initialize</button>{/if}{#if selectedService}<label class="sr-only" for="service-action">Service action</label><select id="service-action" class="select h-8 py-0 text-sm" bind:value={serviceAction}><option value="start">Start</option><option value="stop">Stop</option><option value="restart">Restart</option><option value="reload">Reload configuration</option><option value="once">Start once</option><option value="kill">Kill</option><option value="pause">Pause</option><option value="cont">Continue</option></select><label class="flex items-center gap-1 text-xs text-surface-500" for="service-timeout">Timeout <input id="service-timeout" class="input h-8 w-16 py-0 text-sm" type="number" min="1" max="60" bind:value={serviceTimeout} />s</label><button type="button" class="btn preset-filled-primary-500" on:click={() => confirmServiceOperation(selectedService, serviceAction)}>Apply</button>{/if}<button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
+          <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="services-heading" class="font-semibold">Runit services</h2><p class="text-xs text-surface-500">System actions use polkit; user and turnstile services use session permissions.</p></div><div class="ml-auto flex flex-wrap items-center gap-2">{#if serviceScope !== 'turnstile'}<button type="button" class="btn preset-filled-primary-500" on:click={openServiceDialog}>Add service</button>{/if}{#if serviceScope === 'user'}<button type="button" class="btn preset-tonal" on:click={initializeUserServices}>Initialize</button>{/if}<button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
           <div class="flex flex-wrap items-end gap-1 border-b border-surface-300-700 bg-surface-50-900 px-3 pt-2"><div class="flex gap-1" role="tablist" aria-label="Service scope"><button type="button" role="tab" aria-selected={serviceScope === 'system'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'system' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('system')}>System</button><button type="button" role="tab" aria-selected={serviceScope === 'user'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'user' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('user')}>User</button><button type="button" role="tab" aria-selected={serviceScope === 'turnstile'} class="border-b-2 px-3 py-2 text-sm {serviceScope === 'turnstile' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500 hover:text-surface-900-100'}" on:click={() => selectServiceScope('turnstile')}>Turnstile</button></div><div class="ml-auto flex gap-1 pb-1.5" aria-label="Service filter">{#each [['all', 'All'], ['active', 'Active'], ['disabled', 'Disabled']] as filter}<button type="button" class="rounded-base border px-2.5 py-1 text-xs {serviceFilter === filter[0] ? 'border-primary-500 bg-primary-500/10 font-semibold text-primary-700-300' : 'border-surface-300-700 hover:bg-surface-200-800'}" aria-pressed={serviceFilter === filter[0]} on:click={() => serviceFilter = filter[0] as typeof serviceFilter}>{filter[1]}</button>{/each}</div></div>
           {#if serviceScope === 'turnstile'}<div class="grid gap-2 border-b border-surface-300-700 p-3 md:grid-cols-2"><div class="flex gap-2"><label class="sr-only" for="turnstile-ready">Turnstile ready services</label><input id="turnstile-ready" class="input min-w-0 flex-1" placeholder="Ready services…" bind:value={turnstileReady} /><button type="button" class="btn preset-tonal" on:click={() => changeTurnstileReady('add')}>Add</button><button type="button" class="btn preset-tonal" on:click={() => changeTurnstileReady('remove')}>Remove</button></div><div class="flex gap-2"><label class="sr-only" for="turnstile-environment">Turnstile environment variables</label><input id="turnstile-environment" class="input min-w-0 flex-1" placeholder="VAR=value, OTHER=value" bind:value={turnstileEnvironment} /><button type="button" class="btn preset-tonal" on:click={updateTurnstileEnvironment}>Update environment</button></div></div>{/if}
           <div class="service-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Service</span><span>State</span><span>Enabled</span><span>PID</span><span>Command</span><span>Time</span></div>
@@ -1314,8 +1318,8 @@
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="service-dialog-title" class="font-semibold">Add {serviceScope} service</h2></header>
       <div class="space-y-3 p-4">
         <label class="block text-sm"><span class="mb-1 block font-medium">Service name</span><input class="input app-input-surface w-full" bind:value={serviceName} pattern="[A-Za-z0-9][A-Za-z0-9_.@-]*" maxlength="128" autocomplete="off" required /></label>
-        <label class="block text-sm"><span class="mb-1 block font-medium">Executable</span><input class="input app-input-surface w-full font-mono" bind:value={serviceCommand} placeholder="/usr/bin/program" pattern="/.*" maxlength="4096" autocomplete="off" required /></label>
-        <label class="block text-sm"><span class="mb-1 block font-medium">Arguments <span class="font-normal text-surface-500">(optional, one per line)</span></span><textarea class="input app-input-surface min-h-28 w-full resize-y font-mono" bind:value={serviceArguments} maxlength="16384" placeholder="--flag&#10;value with spaces"></textarea></label>
+        <label class="block text-sm"><span class="mb-1 block font-medium">Command</span><input class="input app-input-surface w-full font-mono" bind:value={serviceCommand} placeholder="program --flag" maxlength="16384" autocomplete="off" required /></label>
+        <div class="grid gap-3 sm:grid-cols-2"><label class="block text-sm"><span class="mb-1 block font-medium">User <span class="font-normal text-surface-500">(optional)</span></span><input class="input app-input-surface w-full" bind:value={serviceUser} maxlength="32" autocomplete="off" /></label><label class="block text-sm"><span class="mb-1 block font-medium">Group <span class="font-normal text-surface-500">(optional)</span></span><input class="input app-input-surface w-full" bind:value={serviceGroup} maxlength="32" autocomplete="off" /></label></div>
         <p class="text-xs text-surface-500">The service is created disabled. Review it in the table, then enable it with the switch.</p>
         {#if serviceDialogError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{serviceDialogError}</p>{/if}
       </div>

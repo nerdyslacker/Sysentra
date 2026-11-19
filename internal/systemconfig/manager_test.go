@@ -18,6 +18,12 @@ func (failingRunner) Run(context.Context, string, ...string) (runner.Result, err
 	return runner.Result{}, errors.New("sync failed")
 }
 
+type successfulRunner struct{}
+
+func (successfulRunner) Run(context.Context, string, ...string) (runner.Result, error) {
+	return runner.Result{}, nil
+}
+
 type grubRunner struct {
 	config string
 	saved  string
@@ -91,6 +97,38 @@ func TestMirrorChangeRollsBackWhenIndexRefreshFails(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(config, "00-repository-main.conf")); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatalf("new mirror override was not rolled back: %v", statErr)
+	}
+}
+
+func TestMirrorChangeBacksUpAndReplacesExistingOverride(t *testing.T) {
+	root := t.TempDir()
+	vendor := filepath.Join(root, "vendor")
+	config := filepath.Join(root, "xbps.d")
+	if err := os.MkdirAll(vendor, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(config, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := "00-repository-main.conf"
+	if err := os.WriteFile(filepath.Join(vendor, name), []byte("repository=https://repo-default.voidlinux.org/current\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	previous := []byte("repository=https://old.example/current\n")
+	if err := os.WriteFile(filepath.Join(config, name), previous, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(successfulRunner{}, config, vendor, filepath.Join(root, "smb.conf"), filepath.Join(root, "fstab"))
+	if err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.MirrorUse, Value: "https://new.example/"}); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(config, name))
+	if err != nil || !strings.Contains(string(contents), managedMarker+"\nrepository=https://new.example/current") {
+		t.Fatalf("override=%q err=%v", contents, err)
+	}
+	backup, err := os.ReadFile(filepath.Join(config, name+".bak"))
+	if err != nil || string(backup) != string(previous) {
+		t.Fatalf("backup=%q err=%v", backup, err)
 	}
 }
 

@@ -10,12 +10,14 @@ import (
 )
 
 const maxServiceLogBytes = 64 * 1024
+const managedServiceMarker = ".sysentra-managed"
 
 type Details struct {
 	Definition string   `json:"definition"`
 	RunScript  string   `json:"runScript"`
 	LogPath    string   `json:"logPath"`
 	Logs       []string `json:"logs"`
+	Managed    bool     `json:"managed"`
 }
 
 func serviceDetails(root, name string, system bool) (Details, error) {
@@ -23,7 +25,7 @@ func serviceDetails(root, name string, system bool) (Details, error) {
 	if err != nil {
 		return Details{}, err
 	}
-	details := Details{Definition: definition}
+	details := Details{Definition: definition, Managed: isManagedService(definition)}
 	if run, err := readBounded(filepath.Join(definition, "run"), 16*1024); err == nil {
 		details.RunScript = strings.TrimSpace(string(run))
 	}
@@ -52,6 +54,23 @@ func serviceDetails(root, name string, system bool) (Details, error) {
 		}
 	}
 	return details, nil
+}
+
+func isManagedService(path string) bool {
+	marker := filepath.Join(path, managedServiceMarker)
+	info, err := os.Lstat(marker)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	contents, err := os.ReadFile(marker)
+	return err == nil && string(contents) == "sysentra\n"
+}
+
+func removeManagedService(path string) error {
+	if !isManagedService(path) {
+		return errors.New("only services created by Sysentra can be deleted")
+	}
+	return os.RemoveAll(path)
 }
 
 func serviceDirectory(root, name string) (string, error) {

@@ -16,6 +16,16 @@ func (f fakeRunner) Run(context.Context, string, ...string) (runner.Result, erro
 	return runner.Result{Stdout: []byte(f.output)}, nil
 }
 
+type countingRunner struct {
+	output string
+	calls  int
+}
+
+func (r *countingRunner) Run(context.Context, string, ...string) (runner.Result, error) {
+	r.calls++
+	return runner.Result{Stdout: []byte(r.output)}, nil
+}
+
 type stderrRunner struct{ output string }
 
 func (f stderrRunner) Run(context.Context, string, ...string) (runner.Result, error) {
@@ -116,6 +126,28 @@ func TestInventoryParsesStatusReturnedOnStandardError(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].State != "Running" || items[0].PID != 42 {
 		t.Fatalf("services = %#v", items)
+	}
+}
+
+func TestInventoryReadsAllEnabledStatusesWithOneCommand(t *testing.T) {
+	root := t.TempDir()
+	definitions, enabled := filepath.Join(root, "sv"), filepath.Join(root, "enabled")
+	if err := os.MkdirAll(enabled, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"dbus", "sshd"} {
+		definition := filepath.Join(definitions, name)
+		if err := os.MkdirAll(definition, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(definition, filepath.Join(enabled, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command := &countingRunner{output: "run: " + filepath.Join(enabled, "dbus") + ": (pid 10) 3s\nrun: " + filepath.Join(enabled, "sshd") + ": (pid 11) 4s\n"}
+	items, err := NewInventory(command, definitions, enabled, filepath.Join(root, "proc")).List(context.Background())
+	if err != nil || command.calls != 1 || len(items) != 2 || items[0].PID != 10 || items[1].PID != 11 {
+		t.Fatalf("calls=%d items=%#v err=%v", command.calls, items, err)
 	}
 }
 
