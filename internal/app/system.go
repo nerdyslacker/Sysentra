@@ -64,6 +64,7 @@ type serviceReader interface {
 	ChangeAccount(context.Context, security.AccountRequest) error
 	AccountStatus(context.Context) ([]accounts.Status, error)
 	ChangeFirewall(context.Context, security.FirewallRequest) error
+	ChangeFirmware(context.Context, security.FirmwareRequest) (firmware.Result, error)
 }
 type userServiceReader interface {
 	List(context.Context) ([]services.Service, error)
@@ -237,19 +238,32 @@ type XBPSConfigRuleView struct {
 }
 
 type FirmwareDeviceView struct {
-	Name           string `json:"name"`
-	Vendor         string `json:"vendor"`
-	Version        string `json:"version"`
-	ID             string `json:"id"`
-	Summary        string `json:"summary"`
-	Updatable      bool   `json:"updatable"`
-	NewVersion     string `json:"newVersion"`
-	RebootRequired bool   `json:"rebootRequired"`
+	Name             string `json:"name"`
+	Vendor           string `json:"vendor"`
+	Version          string `json:"version"`
+	ID               string `json:"id"`
+	Summary          string `json:"summary"`
+	Updatable        bool   `json:"updatable"`
+	NewVersion       string `json:"newVersion"`
+	RebootRequired   bool   `json:"rebootRequired"`
+	ShutdownRequired bool   `json:"shutdownRequired"`
+	ACRequired       bool   `json:"acRequired"`
+	UpdateRemote     string `json:"updateRemote"`
+	UpdateSummary    string `json:"updateSummary"`
+	UpdateMessage    string `json:"updateMessage"`
+	UpdateUrgency    string `json:"updateUrgency"`
+	UpdateSize       uint64 `json:"updateSize"`
 }
 
 type FirmwareCatalogView struct {
 	Available bool                 `json:"available"`
 	Devices   []FirmwareDeviceView `json:"devices"`
+	Warning   string               `json:"warning"`
+}
+
+type FirmwareActionResultView struct {
+	Catalog     FirmwareCatalogView `json:"catalog"`
+	Diagnostics []string            `json:"diagnostics"`
 }
 
 type FirewallRuleView struct {
@@ -435,11 +449,27 @@ func (s *SystemService) ListFirmware() (FirmwareCatalogView, error) {
 	if err != nil {
 		return FirmwareCatalogView{}, err
 	}
-	view := FirmwareCatalogView{Available: catalog.Available, Devices: make([]FirmwareDeviceView, len(catalog.Devices))}
+	view := FirmwareCatalogView{Available: catalog.Available, Devices: make([]FirmwareDeviceView, len(catalog.Devices)), Warning: catalog.Warning}
 	for index, device := range catalog.Devices {
-		view.Devices[index] = FirmwareDeviceView{Name: device.Name, Vendor: device.Vendor, Version: device.Version, ID: device.ID, Summary: device.Summary, Updatable: device.Updatable, NewVersion: device.NewVersion, RebootRequired: device.RebootRequired}
+		view.Devices[index] = FirmwareDeviceView{Name: device.Name, Vendor: device.Vendor, Version: device.Version, ID: device.ID, Summary: device.Summary, Updatable: device.Updatable, NewVersion: device.NewVersion, RebootRequired: device.RebootRequired, ShutdownRequired: device.ShutdownRequired, ACRequired: device.ACRequired, UpdateRemote: device.UpdateRemote, UpdateSummary: device.UpdateSummary, UpdateMessage: device.UpdateMessage, UpdateUrgency: device.UpdateUrgency, UpdateSize: device.UpdateSize}
 	}
 	return view, nil
+}
+
+func (s *SystemService) ChangeFirmware(operation, deviceID, version string) (FirmwareActionResultView, error) {
+	request := security.FirmwareRequest{Version: security.APIVersion, Operation: security.FirmwareOperation(operation), DeviceID: deviceID, VersionName: version}
+	if err := request.Validate(); err != nil {
+		return FirmwareActionResultView{}, err
+	}
+	result, err := s.services.ChangeFirmware(context.Background(), request)
+	if err != nil {
+		return FirmwareActionResultView{Diagnostics: result.Diagnostics}, err
+	}
+	catalog, err := s.ListFirmware()
+	if err != nil {
+		return FirmwareActionResultView{Diagnostics: result.Diagnostics}, err
+	}
+	return FirmwareActionResultView{Catalog: catalog, Diagnostics: result.Diagnostics}, nil
 }
 
 func (s *SystemService) ListServices() ([]ServiceView, error) {

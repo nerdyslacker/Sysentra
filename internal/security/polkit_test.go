@@ -16,7 +16,7 @@ func TestPolkitSubjectUsesUniqueSystemBusName(t *testing.T) {
 }
 
 func TestKnownPolkitActionsIncludeEveryPrivilegedController(t *testing.T) {
-	for _, action := range []string{PackageManagementAction, ServiceManagementAction, XBPSConfigManagementAction, SystemConfigManagementAction, AccountManagementAction} {
+	for _, action := range []string{PackageManagementAction, ServiceManagementAction, XBPSConfigManagementAction, SystemConfigManagementAction, AccountManagementAction, FirewallManagementAction, FirmwareManagementAction} {
 		if !knownPolkitAction(action) {
 			t.Fatalf("action %q is not allowlisted", action)
 		}

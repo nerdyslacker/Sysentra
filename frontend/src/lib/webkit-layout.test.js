@@ -103,6 +103,11 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /confirmSambaRemoval\(share\)/);
   assert.match(app, /confirmNFSAction\(mount\.mounted \? 'unmount' : 'mount', mount\)/);
   assert.match(app, /Unmount before editing persistent configuration/);
+  assert.match(app, /ChangeFirmware\(firmwareOperation/);
+  assert.match(app, />Refresh metadata<\/button>/);
+  assert.match(app, /'Install update'/);
+  assert.match(app, /fwupd keeps its signature, power, device-safety, and offline-update checks enabled/);
+  assert.match(app, /firmwareActionLogs\.join\('\\n'\)/);
   assert.match(app, /ChangeTurnstileReady\(operation, names\)/);
   assert.match(app, /UpdateTurnstileEnvironment\(values\)/);
   assert.match(app, />Boot images <span/);
@@ -122,6 +127,12 @@ test('keeps system tables scrollable and exposes requested management sections',
 
   assert.match(styles, /\.system-table\s*\{[^}]*height: 100%/s);
   assert.match(styles, /\.system-table-body\s*\{[^}]*overflow-y: auto/s);
+  assert.match(styles, /\.samba-grid\s*\{[^}]*10rem;[^}]*gap: 0\.75rem/s);
+  assert.match(styles, /\.nfs-grid\s*\{[^}]*15rem;[^}]*gap: 0\.75rem/s);
+  assert.match(styles, /\.firmware-grid\s*\{[^}]*9\.5rem 6rem;[^}]*gap: 0\.75rem/s);
+  assert.match(app, /samba-grid package-table-header sticky/);
+  assert.match(app, /nfs-grid package-table-header sticky/);
+  assert.match(app, /firmware-grid package-table-header sticky/);
   assert.doesNotMatch(app, /system-table overflow-auto/);
   assert.match(app, /role="switch"[^>]*aria-checked/);
   assert.match(app, /<span>Service<\/span><span>State<\/span><span>Enabled<\/span><span>PID<\/span><span>Command<\/span><span>Time<\/span>/);

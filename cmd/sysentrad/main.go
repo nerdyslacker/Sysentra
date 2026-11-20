@@ -15,6 +15,7 @@ import (
 	"sysentra/internal/accounts"
 	"sysentra/internal/daemon"
 	"sysentra/internal/firewall"
+	"sysentra/internal/firmware"
 	"sysentra/internal/runner"
 	"sysentra/internal/security"
 	"sysentra/internal/services"
@@ -43,6 +44,7 @@ const introspection = `<node>
     <method name="ChangeAccount"><arg direction="in" type="s" name="request"/></method>
     <method name="AccountStatus"><arg direction="out" type="s" name="status"/></method>
     <method name="ChangeFirewall"><arg direction="in" type="s" name="request"/></method>
+    <method name="ChangeFirmware"><arg direction="in" type="s" name="request"/><arg direction="out" type="s" name="result"/></method>
   </interface>` + introspect.IntrospectDataString + `</node>`
 
 type api struct {
@@ -52,6 +54,7 @@ type api struct {
 	systemConfig *daemon.SystemConfigController
 	accounts     *daemon.AccountController
 	firewall     *daemon.FirewallController
+	firmware     *daemon.FirmwareController
 }
 
 func (api) Version() (uint32, *dbus.Error) { return security.HelperAPIVersion, nil }
@@ -158,6 +161,18 @@ func (a api) ChangeFirewall(sender dbus.Sender, payload string) *dbus.Error {
 	return nil
 }
 
+func (a api) ChangeFirmware(sender dbus.Sender, payload string) (string, *dbus.Error) {
+	result, err := a.firmware.Change(context.Background(), string(sender), payload)
+	if err != nil {
+		return "", dbus.MakeFailedError(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return "", dbus.MakeFailedError(err)
+	}
+	return string(encoded), nil
+}
+
 func main() {
 	connection, err := dbus.ConnectSystemBus()
 	if err != nil {
@@ -174,7 +189,8 @@ func main() {
 	accountController := daemon.NewAccountController(authorizer, accounts.NewManager(commands))
 	firewallInventory := firewall.NewInventory(commands)
 	firewallController := daemon.NewFirewallController(authorizer, firewall.NewManager(commands, firewallInventory, services.NewManager(commands, services.DefinitionsDir, services.EnabledDir)))
-	if err := connection.Export(api{packages: packageService, services: serviceController, config: configController, systemConfig: systemConfigController, accounts: accountController, firewall: firewallController}, objectPath, interfaceName); err != nil {
+	firmwareController := daemon.NewFirmwareController(authorizer, firmware.NewManager(commands))
+	if err := connection.Export(api{packages: packageService, services: serviceController, config: configController, systemConfig: systemConfigController, accounts: accountController, firewall: firewallController, firmware: firmwareController}, objectPath, interfaceName); err != nil {
 		log.Fatal(err)
 	}
 	if err := connection.Export(introspect.Introspectable(introspection), objectPath, "org.freedesktop.DBus.Introspectable"); err != nil {

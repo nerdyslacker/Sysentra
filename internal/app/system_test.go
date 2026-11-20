@@ -9,6 +9,7 @@ import (
 
 	"sysentra/internal/accounts"
 	"sysentra/internal/firewall"
+	"sysentra/internal/firmware"
 	"sysentra/internal/kernel"
 	"sysentra/internal/repositories"
 	"sysentra/internal/security"
@@ -61,10 +62,17 @@ func (s *systemServiceClientStub) ChangeFirewall(_ context.Context, request secu
 	s.firewallRequest = request
 	return nil
 }
+func (s *systemServiceClientStub) ChangeFirmware(_ context.Context, request security.FirmwareRequest) (firmware.Result, error) {
+	return firmware.Result{Diagnostics: []string{string(request.Operation)}}, nil
+}
 
 type accountReaderStub struct{}
 
 type firewallReaderStub struct{ state firewall.State }
+
+type firmwareReaderStub struct{ catalog firmware.Catalog }
+
+func (s firmwareReaderStub) List(context.Context) (firmware.Catalog, error) { return s.catalog, nil }
 
 type sharesReaderStub struct{}
 
@@ -130,6 +138,16 @@ func TestShareChangesPreserveOldIdentifiers(t *testing.T) {
 	}
 	if client.systemRequest.Operation != security.NFSEdit || client.systemRequest.OldPath != "/mnt/old" {
 		t.Fatalf("request=%#v", client.systemRequest)
+	}
+}
+
+func TestFirmwareUpdateReturnsDiagnosticsAndRefreshedCatalog(t *testing.T) {
+	client := &systemServiceClientStub{}
+	inventory := firmwareReaderStub{catalog: firmware.Catalog{Available: true, Devices: []firmware.Device{{ID: "device-1", Name: "System Firmware", Version: "1.2.3"}}}}
+	service := NewSystemService(nil, nil, nil, nil, nil, inventory, nil, nil, client, nil, nil, nil, nil, nil, nil)
+	result, err := service.ChangeFirmware("update", "device-1", "1.2.3")
+	if err != nil || len(result.Diagnostics) != 1 || len(result.Catalog.Devices) != 1 || result.Catalog.Devices[0].Version != "1.2.3" {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
 func (s *systemServiceClientStub) Plan(_ context.Context, request security.PackageRequest) (transactions.Plan, error) {

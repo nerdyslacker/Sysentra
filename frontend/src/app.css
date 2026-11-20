@@ -263,7 +263,8 @@ select option {
 }
 
 .firmware-grid {
-  grid-template-columns: minmax(8rem, 1.5fr) minmax(6rem, 1fr) minmax(5rem, 0.7fr) minmax(6rem, 0.8fr) auto;
+  grid-template-columns: minmax(8rem, 1.5fr) minmax(6rem, 1fr) minmax(5rem, 0.7fr) minmax(6rem, 0.8fr) 9.5rem 6rem;
+  gap: 0.75rem;
 }
 
 .firewall-grid {
@@ -294,11 +295,21 @@ select option {
 }
 
 .samba-grid {
-  grid-template-columns: minmax(7rem, 0.8fr) minmax(10rem, 1.5fr) 6rem 5rem auto;
+  grid-template-columns: minmax(7rem, 0.8fr) minmax(10rem, 1.5fr) 6rem 5rem 10rem;
+  gap: 0.75rem;
 }
 
 .nfs-grid {
-  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 1fr) 4rem minmax(8rem, 1fr) 6rem auto;
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 1fr) 4rem minmax(8rem, 1fr) 6rem 15rem;
+  gap: 0.75rem;
+}
+
+.samba-grid > *,
+.nfs-grid > *,
+.firmware-grid > * {
+  min-width: 0;
+  justify-self: stretch;
+  text-align: left;
 }
 
 .account-user-grid {
@@ -386,7 +397,7 @@ select option {
     display: none;
   }
   .firmware-grid {
-    grid-template-columns: minmax(7rem, 1fr) minmax(5rem, 0.7fr) auto;
+    grid-template-columns: minmax(7rem, 1fr) minmax(5rem, 0.7fr) 9.5rem 6rem;
   }
   .driver-grid {
     grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 0.8fr) auto;
@@ -402,13 +413,13 @@ select option {
     display: none;
   }
   .samba-grid {
-    grid-template-columns: minmax(6rem, 0.7fr) minmax(8rem, 1fr) 5rem auto;
+    grid-template-columns: minmax(6rem, 0.7fr) minmax(8rem, 1fr) 5rem 10rem;
   }
   .samba-grid > :nth-child(4) {
     display: none;
   }
   .nfs-grid {
-    grid-template-columns: minmax(7rem, 1fr) minmax(7rem, 1fr) 5rem auto;
+    grid-template-columns: minmax(7rem, 1fr) minmax(7rem, 1fr) 5rem 15rem;
   }
   .nfs-grid > :nth-child(3) {
     display: none;

@@ -8,7 +8,7 @@
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
-  import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
+  import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeFirmware, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
   import PackageDetailsSidebar from './components/PackageDetailsSidebar.svelte';
@@ -43,6 +43,14 @@
   let mirrorRecoveryError = '';
   let firmwareDevices: FirmwareDeviceView[] = [];
   let firmwareAvailable = false;
+  let firmwareWarning = '';
+  let firmwareDialog: HTMLDialogElement;
+  let firmwareOperation: 'refresh' | 'update' = 'refresh';
+  let firmwareDevice: FirmwareDeviceView | null = null;
+  let firmwareActionLoading = false;
+  let firmwareActionError = '';
+  let firmwareActionLogs: string[] = [];
+  let firmwareActionSucceeded = false;
   let firewall: FirewallView | null = null;
   let firewallCache: Record<string, FirewallView> = {};
   let firewallSelectedBackend = '';
@@ -301,6 +309,7 @@
         if (requestID === systemRequestID) {
           firmwareAvailable = result.available;
           firmwareDevices = result.devices;
+          firmwareWarning = result.warning;
         }
       }
       if (view === 'Firewall') {
@@ -963,6 +972,35 @@
     });
   }
 
+  function openFirmwareAction(operation: 'refresh' | 'update', device: FirmwareDeviceView | null = null) {
+    firmwareOperation = operation;
+    firmwareDevice = device;
+    firmwareActionLoading = false;
+    firmwareActionError = '';
+    firmwareActionLogs = [];
+    firmwareActionSucceeded = false;
+    firmwareDialog.showModal();
+  }
+
+  async function executeFirmwareAction() {
+    if (firmwareActionLoading || (firmwareOperation === 'update' && !firmwareDevice?.newVersion)) return;
+    firmwareActionLoading = true;
+    firmwareActionError = '';
+    firmwareActionLogs = [];
+    try {
+      const result = await ChangeFirmware(firmwareOperation, firmwareDevice?.id ?? '', firmwareDevice?.newVersion ?? '');
+      firmwareAvailable = result.catalog.available;
+      firmwareDevices = result.catalog.devices;
+      firmwareWarning = result.catalog.warning;
+      firmwareActionLogs = result.diagnostics;
+      firmwareActionSucceeded = true;
+    } catch (error) {
+      firmwareActionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      firmwareActionLoading = false;
+    }
+  }
+
   async function inspectRepositoryKey() {
     const repositoryURL = configValue.trim();
     if (!repositoryURL || configKeyLoading) return;
@@ -1365,12 +1403,12 @@
       {:else if activeView === 'Samba Server'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="samba-heading">
           <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="samba-heading" class="font-semibold">Samba server</h2><p class="text-xs text-surface-500">Shares configured in /etc/samba/smb.conf.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openConfigDialog('samba')}>Add share</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
-          {#if !sambaServer?.configured}<p class="system-table-body p-5 text-sm text-surface-500" role="status">Samba server configuration was not found.</p>{:else}<div class="samba-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Share</span><span>Path</span><span>Access</span><span>Guest</span><span>Actions</span></div><div class="system-table-body">{#each filteredSambaShares as share}<div class="samba-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-medium">{share.name}</span><span class="truncate font-mono text-xs">{share.path || '—'}</span><span>{share.readOnly ? 'Read only' : 'Writable'}</span><span>{share.guestOK ? 'Allowed' : 'Disabled'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" on:click={() => openConfigDialog('samba', 'edit', share)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" on:click={() => confirmSambaRemoval(share)}>Remove</button></span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching Samba shares.</p>{/each}</div>{/if}
+          {#if !sambaServer?.configured}<p class="system-table-body p-5 text-sm text-surface-500" role="status">Samba server configuration was not found.</p>{:else}<div class="system-table-body"><div class="samba-grid package-table-header sticky top-0 z-10 grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Share</span><span>Path</span><span>Access</span><span>Guest</span><span>Actions</span></div>{#each filteredSambaShares as share}<div class="samba-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-medium">{share.name}</span><span class="truncate font-mono text-xs">{share.path || '—'}</span><span>{share.readOnly ? 'Read only' : 'Writable'}</span><span>{share.guestOK ? 'Allowed' : 'Disabled'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" on:click={() => openConfigDialog('samba', 'edit', share)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" on:click={() => confirmSambaRemoval(share)}>Remove</button></span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching Samba shares.</p>{/each}</div>{/if}
         </section>
       {:else if activeView === 'NFS Client'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="nfs-heading">
           <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="nfs-heading" class="font-semibold">NFS client</h2><p class="text-xs text-surface-500">Configured and mounted NFS filesystems.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openConfigDialog('nfs')}>Add mount</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
-          <div class="nfs-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Source</span><span>Mount point</span><span>Type</span><span>Options</span><span>Status</span><span>Actions</span></div><div class="system-table-body">{#each filteredNFSMounts as mount}<div class="nfs-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-mono text-xs">{mount.source}</span><span class="truncate font-mono text-xs">{mount.target}</span><span>{mount.type}</span><span class="nfs-options truncate text-xs" title={mount.options}>{mount.options}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {mount.mounted ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-surface-400/50 bg-surface-200-800 text-surface-700-300'}">{mount.mounted ? 'Mounted' : 'Unmounted'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" disabled={!mount.mounted && !mount.configured} title={!mount.mounted && !mount.configured ? 'Only configured NFS filesystems can be mounted' : ''} on:click={() => confirmNFSAction(mount.mounted ? 'unmount' : 'mount', mount)}>{mount.mounted ? 'Unmount' : 'Mount'}</button>{#if mount.configured}<button type="button" class="btn preset-tonal" disabled={mount.mounted} title={mount.mounted ? 'Unmount before editing persistent configuration' : ''} on:click={() => openConfigDialog('nfs', 'edit', mount)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" disabled={mount.mounted} title={mount.mounted ? 'Unmount before removing persistent configuration' : ''} on:click={() => confirmNFSAction('remove', mount)}>Remove</button>{/if}</span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No NFS mounts found.</p>{/each}</div>
+          <div class="system-table-body"><div class="nfs-grid package-table-header sticky top-0 z-10 grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Source</span><span>Mount point</span><span>Type</span><span>Options</span><span>Status</span><span>Actions</span></div>{#each filteredNFSMounts as mount}<div class="nfs-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-mono text-xs">{mount.source}</span><span class="truncate font-mono text-xs">{mount.target}</span><span>{mount.type}</span><span class="nfs-options truncate text-xs" title={mount.options}>{mount.options}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {mount.mounted ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-surface-400/50 bg-surface-200-800 text-surface-700-300'}">{mount.mounted ? 'Mounted' : 'Unmounted'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" disabled={!mount.mounted && !mount.configured} title={!mount.mounted && !mount.configured ? 'Only configured NFS filesystems can be mounted' : ''} on:click={() => confirmNFSAction(mount.mounted ? 'unmount' : 'mount', mount)}>{mount.mounted ? 'Unmount' : 'Mount'}</button>{#if mount.configured}<button type="button" class="btn preset-tonal" disabled={mount.mounted} title={mount.mounted ? 'Unmount before editing persistent configuration' : ''} on:click={() => openConfigDialog('nfs', 'edit', mount)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" disabled={mount.mounted} title={mount.mounted ? 'Unmount before removing persistent configuration' : ''} on:click={() => confirmNFSAction('remove', mount)}>Remove</button>{/if}</span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No NFS mounts found.</p>{/each}</div>
         </section>
       {:else if activeView === 'Kernels'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="kernels-heading">
@@ -1433,23 +1471,25 @@
         </section>
       {:else if activeView === 'Firmware'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="firmware-heading">
-          <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="firmware-heading" class="font-semibold">Firmware devices</h2><p class="text-xs text-surface-500">Local device and update information reported by fwupd. Loading this page does not refresh remote metadata.</p></div><button type="button" class="btn preset-tonal ml-auto" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></header>
+          <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="firmware-heading" class="font-semibold">Firmware devices</h2><p class="text-xs text-surface-500">Device and reviewed release information reported by fwupd.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" disabled={!firmwareAvailable || !!firmwareWarning || systemLoading} on:click={() => openFirmwareAction('refresh')}>Refresh metadata</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
           {#if !firmwareAvailable}
-            <p class="p-5 text-sm text-surface-600-400" role="status">fwupd is not installed, so firmware devices and updates are unavailable.</p>
+            <div class="space-y-3 p-5"><p class="text-sm text-surface-600-400" role="status">fwupd is not installed, so firmware devices and updates are unavailable.</p><button type="button" class="btn preset-tonal" on:click={() => openNamedPackageTransaction('Install fwupd', 'Install fwupd firmware update support.', ['fwupd'], 'install')}>Install fwupd</button></div>
+          {:else if firmwareWarning}
+            <p class="p-5 text-sm text-warning-700-300" role="status">{firmwareWarning}</p>
           {:else if firmwareDevices.length === 0}
             <p class="p-5 text-sm text-surface-600-400" role="status">fwupd did not report any devices.</p>
           {:else}
-            <div class="contents">
-              <div class="firmware-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold">
-                <span>Device</span><span class="firmware-vendor">Vendor</span><span>Current</span><span class="firmware-available">Available</span><span>Status</span>
+            <div class="system-table-body">
+              <div class="firmware-grid package-table-header sticky top-0 z-10 grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold">
+                <span>Device</span><span class="firmware-vendor">Vendor</span><span>Current</span><span class="firmware-available">Available</span><span>Status</span><span>Action</span>
               </div>
-              <div class="system-table-body">{#each filteredFirmwareDevices as device}
+              {#each filteredFirmwareDevices as device}
                 <div class="firmware-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm">
                   <div class="min-w-0"><p class="truncate font-medium">{device.name || 'Unnamed device'}</p><p class="truncate text-xs text-surface-500">{device.summary}</p></div>
                   <span class="firmware-vendor truncate">{device.vendor || '—'}</span><span class="truncate font-mono text-xs">{device.version || '—'}</span><span class="firmware-available truncate font-mono text-xs">{device.newVersion || '—'}</span>
-                  <span class="w-fit rounded-full border px-2 py-0.5 text-xs {device.newVersion ? 'border-warning-500/40 bg-warning-500/10 text-warning-700-300' : device.updatable ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-surface-400/50 bg-surface-200-800 text-surface-700-300'}">{device.newVersion ? device.rebootRequired ? 'Update · reboot' : 'Update available' : device.updatable ? 'Up to date' : 'Not updatable'}</span>
+                  <span class="w-fit rounded-full border px-2 py-0.5 text-xs {device.newVersion ? 'border-warning-500/40 bg-warning-500/10 text-warning-700-300' : device.updatable ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-surface-400/50 bg-surface-200-800 text-surface-700-300'}">{device.newVersion ? device.shutdownRequired ? 'Update · shutdown' : device.rebootRequired ? 'Update · reboot' : 'Update available' : device.updatable ? 'Up to date' : 'Not updatable'}</span><button type="button" class="btn preset-tonal" disabled={!device.newVersion} title={device.newVersion ? `Review update ${device.newVersion}` : 'No update is available'} on:click={() => openFirmwareAction('update', device)}>Review</button>
                 </div>
-              {/each}</div>
+              {/each}
             </div>
           {/if}
         </section>
@@ -1577,6 +1617,27 @@
       </div>
       <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={firewallSaving} on:click={() => firewallDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={firewallSaving || (firewallDialogMode === 'zone' ? !firewallZone.trim() : firewallDialogMode === 'policy' ? false : !firewallTarget.trim())}>{firewallSaving ? 'Saving…' : 'Apply'}</button></footer>
     </form>
+  </dialog>
+
+  <dialog bind:this={firmwareDialog} class="m-auto w-[min(42rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="firmware-dialog-title">
+    <div>
+      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="firmware-dialog-title" class="font-semibold">{firmwareOperation === 'refresh' ? 'Refresh firmware metadata' : `Update ${firmwareDevice?.name || 'firmware'}`}</h2></header>
+      <div class="space-y-3 p-4">
+        {#if firmwareOperation === 'refresh'}
+          <p class="text-sm">Download current metadata from enabled fwupd remotes.</p>
+        {:else if firmwareDevice}
+          <dl class="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm"><dt class="text-surface-500">Version</dt><dd class="font-mono">{firmwareDevice.version || '—'} → {firmwareDevice.newVersion}</dd><dt class="text-surface-500">Source</dt><dd>{firmwareDevice.updateRemote || 'fwupd remote'}</dd><dt class="text-surface-500">Urgency</dt><dd class="capitalize">{firmwareDevice.updateUrgency || 'Unspecified'}</dd><dt class="text-surface-500">Download</dt><dd>{firmwareDevice.updateSize ? formatBytes(firmwareDevice.updateSize) : 'Not reported'}</dd></dl>
+          {#if firmwareDevice.updateSummary}<p class="text-sm">{firmwareDevice.updateSummary}</p>{/if}
+          {#if firmwareDevice.updateMessage}<p class="rounded-base border border-warning-500/40 bg-warning-500/10 p-3 text-sm">{firmwareDevice.updateMessage}</p>{/if}
+          <div class="flex flex-wrap gap-2 text-xs">{#if firmwareDevice.acRequired}<span class="rounded-full border border-warning-500/40 bg-warning-500/10 px-2 py-1">Connect AC power</span>{/if}{#if firmwareDevice.shutdownRequired}<span class="rounded-full border border-warning-500/40 bg-warning-500/10 px-2 py-1">Shutdown required</span>{:else if firmwareDevice.rebootRequired}<span class="rounded-full border border-warning-500/40 bg-warning-500/10 px-2 py-1">Reboot required</span>{/if}</div>
+          <p class="text-xs text-surface-500">fwupd keeps its signature, power, device-safety, and offline-update checks enabled.</p>
+        {/if}
+        {#if firmwareActionLoading}<div class="space-y-2" role="status" aria-live="polite"><p class="text-sm">{firmwareOperation === 'refresh' ? 'Refreshing metadata…' : 'Applying firmware update…'}</p><div class="h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></div></div>{/if}
+        {#if firmwareActionLogs.length}<section class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50" aria-label="fwupd output"><pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{firmwareActionLogs.join('\n')}</pre></section>{/if}
+        {#if firmwareActionError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-sm text-error-700-300" role="alert">{firmwareActionError}</p>{:else if firmwareActionSucceeded}<p class="rounded-base border border-success-500/40 bg-success-500/10 p-3 text-sm text-success-700-300" role="status">{firmwareOperation === 'refresh' ? 'Firmware metadata refreshed.' : firmwareDevice?.shutdownRequired ? 'Firmware staged. Shut down when ready to complete the update.' : firmwareDevice?.rebootRequired ? 'Firmware staged. Reboot when ready to complete the update.' : 'Firmware update completed.'}</p>{/if}
+      </div>
+      <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={firmwareActionLoading} on:click={() => firmwareDialog.close()}>{firmwareActionSucceeded ? 'Close' : 'Cancel'}</button>{#if !firmwareActionSucceeded}<button type="button" class="btn preset-filled-primary-500" disabled={firmwareActionLoading || (firmwareOperation === 'update' && !firmwareDevice?.newVersion)} on:click={executeFirmwareAction}>{firmwareActionLoading ? 'Working…' : firmwareOperation === 'refresh' ? 'Refresh' : 'Install update'}</button>{/if}</footer>
+    </div>
   </dialog>
 
   <dialog bind:this={accountDialog} class="m-auto w-[min(30rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="account-title">

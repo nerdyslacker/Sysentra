@@ -8,6 +8,7 @@ import (
 	"github.com/godbus/dbus/v5"
 
 	"sysentra/internal/accounts"
+	"sysentra/internal/firmware"
 	"sysentra/internal/security"
 	"sysentra/internal/services"
 )
@@ -188,6 +189,32 @@ func (c *DBusClient) ChangeFirewall(ctx context.Context, request security.Firewa
 		return fmt.Errorf("change firewall: %w", call.Err)
 	}
 	return nil
+}
+
+func (c *DBusClient) ChangeFirmware(ctx context.Context, request security.FirmwareRequest) (firmware.Result, error) {
+	if err := c.checkVersion(ctx); err != nil {
+		return firmware.Result{}, err
+	}
+	if err := request.Validate(); err != nil {
+		return firmware.Result{}, err
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return firmware.Result{}, err
+	}
+	var response string
+	call := c.connection.Object(systemBusName, systemObjectPath).CallWithContext(ctx, systemInterface+".ChangeFirmware", 0, string(payload))
+	if call.Err != nil {
+		return firmware.Result{}, fmt.Errorf("change firmware: %w", call.Err)
+	}
+	if err := call.Store(&response); err != nil {
+		return firmware.Result{}, fmt.Errorf("decode firmware response: %w", err)
+	}
+	var result firmware.Result
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		return firmware.Result{}, fmt.Errorf("parse firmware response: %w", err)
+	}
+	return result, nil
 }
 
 func NewSystemDBusClient() *DBusClient {

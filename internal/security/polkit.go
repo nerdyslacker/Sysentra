@@ -56,7 +56,7 @@ func (a *PolkitAuthorizer) Authorize(ctx context.Context, sender string, action 
 }
 
 func knownPolkitAction(action string) bool {
-	return action == PackageManagementAction || action == ServiceManagementAction || action == XBPSConfigManagementAction || action == SystemConfigManagementAction || action == AccountManagementAction
+	return action == PackageManagementAction || action == ServiceManagementAction || action == XBPSConfigManagementAction || action == SystemConfigManagementAction || action == AccountManagementAction || action == FirewallManagementAction || action == FirmwareManagementAction
 }
 
 func polkitSubjectForSender(sender string) (polkitSubject, error) {

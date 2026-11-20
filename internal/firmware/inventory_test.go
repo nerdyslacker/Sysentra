@@ -41,7 +41,7 @@ func TestListReturnsUnavailableWithoutRunningFwupd(t *testing.T) {
 func TestListCombinesDevicesAndAvailableUpdates(t *testing.T) {
 	command := &stubRunner{replies: []reply{
 		{result: runner.Result{Stdout: []byte(`{"Devices":[{"Name":"System Firmware","Vendor":"Example","Version":"1.0","DeviceId":"dev-1","Summary":"Main firmware","Flags":["updatable"]}]}`)}},
-		{result: runner.Result{Stdout: []byte(`{"Devices":[{"DeviceId":"dev-1","Flags":["needs-reboot"],"Releases":[{"Version":"1.1","Flags":["is-upgrade"]}]}]}`)}},
+		{result: runner.Result{Stdout: []byte(`{"Devices":[{"DeviceId":"dev-1","Flags":["needs-reboot","require-ac"],"Releases":[{"Version":"1.1","Flags":["is-upgrade"],"RemoteId":"lvfs","Summary":"Security update","UpdateMessage":"Keep AC power connected","Urgency":"high","Size":4096}]}]}`)}},
 	}}
 	inventory := NewInventory(command)
 	inventory.lookPath = func(string) (string, error) { return "/usr/bin/fwupdmgr", nil }
@@ -50,7 +50,7 @@ func TestListCombinesDevicesAndAvailableUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Device{{Name: "System Firmware", Vendor: "Example", Version: "1.0", ID: "dev-1", Summary: "Main firmware", Updatable: true, NewVersion: "1.1", RebootRequired: true}}
+	want := []Device{{Name: "System Firmware", Vendor: "Example", Version: "1.0", ID: "dev-1", Summary: "Main firmware", Updatable: true, NewVersion: "1.1", RebootRequired: true, ACRequired: true, UpdateRemote: "lvfs", UpdateSummary: "Security update", UpdateMessage: "Keep AC power connected", UpdateUrgency: "high", UpdateSize: 4096}}
 	if !catalog.Available || !reflect.DeepEqual(catalog.Devices, want) {
 		t.Fatalf("catalog = %#v", catalog)
 	}
@@ -78,5 +78,15 @@ func TestListTreatsEmptyFailedUpdateQueryAsNoUpdates(t *testing.T) {
 	catalog, err := inventory.List(context.Background())
 	if err != nil || !catalog.Available {
 		t.Fatalf("catalog = %#v, error = %v", catalog, err)
+	}
+}
+
+func TestListReportsUnavailableDaemonWithoutFailingPage(t *testing.T) {
+	command := &stubRunner{replies: []reply{{err: errors.New("daemon unavailable")}}}
+	inventory := NewInventory(command)
+	inventory.lookPath = func(string) (string, error) { return "fwupdmgr", nil }
+	catalog, err := inventory.List(context.Background())
+	if err != nil || !catalog.Available || catalog.Warning == "" {
+		t.Fatalf("catalog=%#v err=%v", catalog, err)
 	}
 }
