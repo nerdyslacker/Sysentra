@@ -3,6 +3,7 @@ package firewall
 import (
 	"bufio"
 	"context"
+	"errors"
 	"os/exec"
 	"strings"
 
@@ -10,9 +11,12 @@ import (
 )
 
 type Rule struct {
-	Target string
-	Action string
-	Source string
+	Kind      string
+	Target    string
+	Protocol  string
+	Direction string
+	Action    string
+	Source    string
 }
 
 type State struct {
@@ -21,8 +25,9 @@ type State struct {
 	Active    bool
 	Unknown   bool
 	Policy    string
+	Zone      string
 	Rules     []Rule
-	Others    []string
+	Backends  []string
 }
 
 type Inventory struct {
@@ -39,19 +44,43 @@ func newInventory(commandRunner runner.Runner, lookup func(string) (string, erro
 }
 
 func (i *Inventory) Read(ctx context.Context) (State, error) {
+	return i.ReadBackend(ctx, "")
+}
+
+func (i *Inventory) ReadBackend(ctx context.Context, requested string) (State, error) {
 	_, ufwErr := i.lookup("ufw")
 	_, firewalldErr := i.lookup("firewall-cmd")
+	backends := []string{}
 	if ufwErr == nil {
-		state := i.readUFW(ctx)
-		if firewalldErr == nil {
-			state.Others = []string{"firewalld"}
-		}
-		return state, nil
+		backends = append(backends, "ufw")
 	}
 	if firewalldErr == nil {
-		return i.readFirewalld(ctx), nil
+		backends = append(backends, "firewalld")
 	}
-	return State{}, nil
+	if requested != "" && !contains(backends, requested) {
+		return State{}, errors.New("requested firewall backend is not installed")
+	}
+	if len(backends) == 0 {
+		return State{}, nil
+	}
+	if requested == "ufw" || (requested == "" && len(backends) == 1 && backends[0] == "ufw") {
+		state := i.readUFW(ctx)
+		state.Backends = backends
+		return state, nil
+	}
+	if requested == "firewalld" || (requested == "" && len(backends) == 1) {
+		state := i.readFirewalld(ctx)
+		state.Backends = backends
+		return state, nil
+	}
+	ufw := i.readUFW(ctx)
+	firewalld := i.readFirewalld(ctx)
+	selected := ufw
+	if firewalld.Active && !ufw.Active {
+		selected = firewalld
+	}
+	selected.Backends = backends
+	return selected, nil
 }
 
 func (i *Inventory) readUFW(ctx context.Context) State {
@@ -86,7 +115,19 @@ func parseUFWRule(line string) (Rule, bool) {
 	if len(parts) < 3 {
 		return Rule{}, false
 	}
-	return Rule{Target: strings.TrimSpace(parts[0]), Action: strings.TrimSpace(parts[1]), Source: strings.TrimSpace(parts[2])}, true
+	target := strings.TrimSpace(strings.TrimSuffix(parts[0], " (v6)"))
+	actionFields := strings.Fields(parts[1])
+	if len(actionFields) == 0 {
+		return Rule{}, false
+	}
+	rule := Rule{Target: target, Action: strings.ToLower(actionFields[0]), Source: strings.TrimSpace(strings.TrimSuffix(parts[2], " (v6)"))}
+	if len(actionFields) > 1 {
+		rule.Direction = strings.ToLower(actionFields[1])
+	}
+	if port, protocol, ok := strings.Cut(target, "/"); ok && (protocol == "tcp" || protocol == "udp") {
+		rule.Kind, rule.Target, rule.Protocol = "port", port, protocol
+	}
+	return rule, true
 }
 
 func splitColumns(line string) []string {
@@ -101,20 +142,18 @@ func splitColumns(line string) []string {
 
 func (i *Inventory) readFirewalld(ctx context.Context) State {
 	state := State{Backend: "firewalld", Installed: true, Rules: []Rule{}}
-	result, err := i.runner.Run(ctx, "firewall-cmd", "--state")
-	if err != nil {
+	status, err := i.runner.Run(ctx, "/usr/bin/sv", "status", "/etc/runit/runsvdir/default/firewalld")
+	if err != nil || !strings.HasPrefix(strings.TrimSpace(string(status.Stdout)), "run:") {
 		return state
 	}
-	state.Active = strings.TrimSpace(string(result.Stdout)) == "running"
-	if !state.Active {
-		return state
-	}
+	state.Active = true
 	zoneResult, err := i.runner.Run(ctx, "firewall-cmd", "--get-default-zone")
 	if err != nil {
 		state.Unknown = true
 		return state
 	}
 	zone := strings.TrimSpace(string(zoneResult.Stdout))
+	state.Zone = zone
 	state.Policy = "default zone: " + zone
 	list, err := i.runner.Run(ctx, "firewall-cmd", "--zone", zone, "--list-all")
 	if err != nil {
@@ -127,13 +166,29 @@ func (i *Inventory) readFirewalld(ctx context.Context) State {
 		for _, prefix := range []string{"services:", "ports:"} {
 			if values, ok := strings.CutPrefix(line, prefix); ok {
 				for _, value := range strings.Fields(strings.TrimSpace(values)) {
-					state.Rules = append(state.Rules, Rule{Target: value, Action: "Allow", Source: "Any"})
+					rule := Rule{Target: value, Action: "allow", Source: "Any", Kind: "service"}
+					if prefix == "ports:" {
+						rule.Kind = "port"
+						rule.Target, rule.Protocol, _ = strings.Cut(value, "/")
+					}
+					state.Rules = append(state.Rules, rule)
 				}
 			}
 		}
 		if value, ok := strings.CutPrefix(line, "rich rules:"); ok && strings.TrimSpace(value) != "" {
-			state.Rules = append(state.Rules, Rule{Target: strings.TrimSpace(value), Action: "Configured", Source: "rich rule"})
+			state.Rules = append(state.Rules, Rule{Kind: "rich", Target: strings.TrimSpace(value), Action: "configured", Source: "rich rule"})
+		} else if strings.HasPrefix(line, "rule ") {
+			state.Rules = append(state.Rules, Rule{Kind: "rich", Target: line, Action: "configured", Source: "rich rule"})
 		}
 	}
 	return state
+}
+
+func contains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }

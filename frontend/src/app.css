@@ -267,7 +267,7 @@ select option {
 }
 
 .firewall-grid {
-  grid-template-columns: minmax(8rem, 1.2fr) minmax(7rem, 0.8fr) minmax(8rem, 1fr);
+  grid-template-columns: minmax(8rem, 1.2fr) minmax(6rem, 0.7fr) minmax(8rem, 1fr) 9rem;
 }
 
 .driver-grid {

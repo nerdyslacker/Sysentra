@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"sysentra/internal/accounts"
+	"sysentra/internal/firewall"
 	"sysentra/internal/kernel"
 	"sysentra/internal/repositories"
 	"sysentra/internal/security"
@@ -24,10 +25,11 @@ func (s kernelReaderStub) List(context.Context) ([]kernel.Kernel, error) { retur
 func (s kernelReaderStub) Status(context.Context) (kernel.Status, error) { return s.status, nil }
 
 type systemServiceClientStub struct {
-	request        security.PackageRequest
-	systemRequest  security.SystemConfigRequest
-	serviceRequest security.ServiceRequest
-	commits        int
+	request         security.PackageRequest
+	systemRequest   security.SystemConfigRequest
+	serviceRequest  security.ServiceRequest
+	firewallRequest security.FirewallRequest
+	commits         int
 }
 
 func (s *systemServiceClientStub) AccountStatus(context.Context) ([]accounts.Status, error) {
@@ -54,8 +56,18 @@ func (s *systemServiceClientStub) ChangeSystemConfig(_ context.Context, request 
 func (s *systemServiceClientStub) ChangeAccount(context.Context, security.AccountRequest) error {
 	return nil
 }
+func (s *systemServiceClientStub) ChangeFirewall(_ context.Context, request security.FirewallRequest) error {
+	s.firewallRequest = request
+	return nil
+}
 
 type accountReaderStub struct{}
+
+type firewallReaderStub struct{ state firewall.State }
+
+func (s firewallReaderStub) ReadBackend(context.Context, string) (firewall.State, error) {
+	return s.state, nil
+}
 
 func (accountReaderStub) List() ([]accounts.User, []accounts.Group, error) {
 	return []accounts.User{{Name: "alice", UID: 1000, GID: 1000, Home: "/home/alice", Shell: "/bin/sh", Groups: []string{"alice"}}}, []accounts.Group{{Name: "alice", GID: 1000}}, nil
@@ -78,6 +90,23 @@ func TestAccountsIncludePrivilegedStatusAndHistory(t *testing.T) {
 	}
 	if len(history) != 1 || history[0].Operation != string(security.UserEdit) || history[0].Target != "alice" {
 		t.Fatalf("history=%#v", history)
+	}
+}
+
+func TestFirewallUsesExplicitBackendAndTypedChange(t *testing.T) {
+	client := &systemServiceClientStub{}
+	inventory := firewallReaderStub{state: firewall.State{Backend: "firewalld", Installed: true, Active: true, Zone: "public", Backends: []string{"ufw", "firewalld"}, Rules: []firewall.Rule{{Kind: "service", Target: "https", Action: "allow", Source: "Any"}}}}
+	service := NewSystemService(nil, nil, nil, nil, nil, nil, inventory, nil, client, nil, nil, nil, nil, nil, nil)
+	view, err := service.GetFirewall("firewalld")
+	if err != nil || view.Zone != "public" || len(view.Backends) != 2 || !view.Rules[0].Mutable {
+		t.Fatalf("view=%#v err=%v", view, err)
+	}
+	input := FirewallChangeInput{Operation: "rule-add", Backend: "firewalld", Zone: "public", Rule: FirewallRuleView{Kind: "port", Target: "443", Protocol: "tcp", Action: "allow", Source: "any"}}
+	if _, err := service.ChangeFirewall(input); err != nil {
+		t.Fatal(err)
+	}
+	if client.firewallRequest.Rule.Target != "443" || client.firewallRequest.Zone != "public" {
+		t.Fatalf("request=%#v", client.firewallRequest)
 	}
 }
 func (s *systemServiceClientStub) Plan(_ context.Context, request security.PackageRequest) (transactions.Plan, error) {

@@ -48,7 +48,7 @@ type firmwareReader interface {
 	List(context.Context) (firmware.Catalog, error)
 }
 type firewallReader interface {
-	Read(context.Context) (firewall.State, error)
+	ReadBackend(context.Context, string) (firewall.State, error)
 }
 type driverReader interface {
 	List(context.Context) (drivers.Catalog, error)
@@ -63,6 +63,7 @@ type serviceReader interface {
 	ChangeSystemConfig(context.Context, security.SystemConfigRequest) error
 	ChangeAccount(context.Context, security.AccountRequest) error
 	AccountStatus(context.Context) ([]accounts.Status, error)
+	ChangeFirewall(context.Context, security.FirewallRequest) error
 }
 type userServiceReader interface {
 	List(context.Context) ([]services.Service, error)
@@ -252,9 +253,13 @@ type FirmwareCatalogView struct {
 }
 
 type FirewallRuleView struct {
-	Target string `json:"target"`
-	Action string `json:"action"`
-	Source string `json:"source"`
+	Kind      string `json:"kind"`
+	Target    string `json:"target"`
+	Protocol  string `json:"protocol"`
+	Direction string `json:"direction"`
+	Action    string `json:"action"`
+	Source    string `json:"source"`
+	Mutable   bool   `json:"mutable"`
 }
 
 type FirewallView struct {
@@ -263,8 +268,19 @@ type FirewallView struct {
 	Active    bool               `json:"active"`
 	Unknown   bool               `json:"unknown"`
 	Policy    string             `json:"policy"`
+	Zone      string             `json:"zone"`
 	Rules     []FirewallRuleView `json:"rules"`
-	Others    []string           `json:"others"`
+	Backends  []string           `json:"backends"`
+}
+
+type FirewallChangeInput struct {
+	Operation string           `json:"operation"`
+	Backend   string           `json:"backend"`
+	Zone      string           `json:"zone"`
+	Policy    string           `json:"policy"`
+	Direction string           `json:"direction"`
+	Rule      FirewallRuleView `json:"rule"`
+	OldRule   FirewallRuleView `json:"oldRule"`
 }
 
 type DriverDeviceView struct {
@@ -371,16 +387,35 @@ func (s *SystemService) changeAccount(request security.AccountRequest) (Accounts
 	return s.ListAccounts()
 }
 
-func (s *SystemService) GetFirewall() (FirewallView, error) {
-	state, err := s.firewall.Read(context.Background())
+func (s *SystemService) GetFirewall(backend string) (FirewallView, error) {
+	state, err := s.firewall.ReadBackend(context.Background(), backend)
 	if err != nil {
 		return FirewallView{}, err
 	}
-	view := FirewallView{Backend: state.Backend, Installed: state.Installed, Active: state.Active, Unknown: state.Unknown, Policy: state.Policy, Others: state.Others, Rules: make([]FirewallRuleView, len(state.Rules))}
+	view := FirewallView{Backend: state.Backend, Installed: state.Installed, Active: state.Active, Unknown: state.Unknown, Policy: state.Policy, Zone: state.Zone, Backends: state.Backends, Rules: make([]FirewallRuleView, len(state.Rules))}
 	for index, rule := range state.Rules {
-		view.Rules[index] = FirewallRuleView{Target: rule.Target, Action: rule.Action, Source: rule.Source}
+		view.Rules[index] = FirewallRuleView{Kind: rule.Kind, Target: rule.Target, Protocol: rule.Protocol, Direction: rule.Direction, Action: rule.Action, Source: rule.Source, Mutable: rule.Kind == "port" || rule.Kind == "service"}
 	}
 	return view, nil
+}
+
+func (s *SystemService) ChangeFirewall(input FirewallChangeInput) (FirewallView, error) {
+	request := security.FirewallRequest{Version: security.APIVersion, Operation: security.FirewallOperation(input.Operation), Backend: input.Backend, Zone: input.Zone, Policy: input.Policy, Direction: input.Direction, Rule: firewallSecurityRule(input.Rule), OldRule: firewallSecurityRule(input.OldRule)}
+	if err := request.Validate(); err != nil {
+		return FirewallView{}, err
+	}
+	if err := s.services.ChangeFirewall(context.Background(), request); err != nil {
+		return FirewallView{}, err
+	}
+	return s.GetFirewall(input.Backend)
+}
+
+func firewallSecurityRule(rule FirewallRuleView) security.FirewallRule {
+	source := rule.Source
+	if strings.EqualFold(source, "any") || strings.EqualFold(source, "anywhere") {
+		source = "any"
+	}
+	return security.FirewallRule{Kind: rule.Kind, Target: rule.Target, Protocol: strings.ToLower(rule.Protocol), Direction: strings.ToLower(rule.Direction), Source: source, Action: strings.ToLower(rule.Action)}
 }
 
 func (s *SystemService) ListDrivers() (DriverCatalogView, error) {

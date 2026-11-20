@@ -2,13 +2,13 @@
   import { onMount } from 'svelte';
   import { Browser } from '@wailsio/runtime';
 
-  import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
+  import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
   import { Discover, FindOwningPackage, GetPackageDetails, ListAdditionalSources, ListInstalled, ListUpdates, SetAdditionalSourceEnabled } from '../bindings/sysentra/internal/app/packageservice';
   import { ListSystemFonts } from '../bindings/sysentra/internal/app/fontservice';
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
-  import { AddNFSMount, AddSambaShare, AddService, AssignAccountGroups, ChangeAccount, ChangeMirror, ChangeRepository, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
+  import { AddNFSMount, AddSambaShare, AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeMirror, ChangeRepository, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
   import PackageDetailsSidebar from './components/PackageDetailsSidebar.svelte';
@@ -44,6 +44,25 @@
   let firmwareDevices: FirmwareDeviceView[] = [];
   let firmwareAvailable = false;
   let firewall: FirewallView | null = null;
+  let firewallCache: Record<string, FirewallView> = {};
+  let firewallSelectedBackend = '';
+  let firewallContentLoading = false;
+  let firewallContentError = '';
+  let firewallRequestID = 0;
+  let firewallDialog: HTMLDialogElement;
+  let firewallDialogMode: 'add' | 'edit' | 'policy' | 'zone' = 'add';
+  let firewallOldRule: FirewallRuleView | null = null;
+  let firewallRuleKind = 'port';
+  let firewallTarget = '';
+  let firewallProtocol = 'tcp';
+  let firewallRuleDirection = 'in';
+  let firewallSource = 'any';
+  let firewallAction = 'allow';
+  let firewallPolicy = 'deny';
+  let firewallDirection = 'incoming';
+  let firewallZone = '';
+  let firewallSaving = false;
+  let firewallError = '';
   let driverDevices: DriverDeviceView[] = [];
   let driverWarnings: string[] = [];
   let driverCategory = 'All';
@@ -233,6 +252,13 @@
   }
 
   async function loadSystemView(view = activeView) {
+    if (view === 'Firewall' && firewallSelectedBackend && firewallCache[firewallSelectedBackend]) {
+      systemRequestID += 1;
+      systemLoading = false;
+      systemError = '';
+      firewall = firewallCache[firewallSelectedBackend];
+      return;
+    }
     const requestID = ++systemRequestID;
     systemLoading = true;
     systemError = '';
@@ -277,8 +303,8 @@
         }
       }
       if (view === 'Firewall') {
-        const result = await GetFirewall();
-        if (requestID === systemRequestID) firewall = result;
+        const result = await GetFirewall(firewallSelectedBackend);
+        if (requestID === systemRequestID) storeFirewall(result);
       }
       if (view === 'Drivers') {
         const result = await ListDrivers();
@@ -1036,8 +1062,107 @@
 
   function confirmFirewallToggle(state: FirewallView | null) {
     if (!state) return;
+    const operation = state.active ? 'disable' : 'enable';
     const action = state.active ? 'Disable' : 'Enable';
-    openConfirmation(`${action} firewall`, `${action} ${state.backend}.`, state.active);
+    openConfirmation(`${action} firewall`, `${action} ${state.backend}.`, state.active, '', async () => {
+      storeFirewall(await ChangeFirewall(firewallChange(operation, state.backend)));
+    });
+  }
+
+  async function selectFirewallBackend(backend: string) {
+    const requestID = ++firewallRequestID;
+    firewallSelectedBackend = backend;
+    firewallContentError = '';
+    if (firewallCache[backend]) {
+      firewall = firewallCache[backend];
+      firewallContentLoading = false;
+      return;
+    }
+    firewallContentLoading = true;
+    try {
+      const result = await GetFirewall(backend);
+      if (requestID === firewallRequestID) storeFirewall(result);
+    } catch (error) {
+      if (requestID === firewallRequestID) firewallContentError = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (requestID === firewallRequestID) firewallContentLoading = false;
+    }
+  }
+
+  async function reloadFirewallStatus() {
+    const backend = firewallSelectedBackend || firewall?.backend || '';
+    const requestID = ++firewallRequestID;
+    firewallContentLoading = true;
+    firewallContentError = '';
+    try {
+      const result = await GetFirewall(backend);
+      if (requestID === firewallRequestID) storeFirewall(result);
+    } catch (error) {
+      if (requestID === firewallRequestID) firewallContentError = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (requestID === firewallRequestID) firewallContentLoading = false;
+    }
+  }
+
+  function storeFirewall(result: FirewallView, invalidate = false) {
+    firewallCache = invalidate ? { [result.backend]: result } : { ...firewallCache, [result.backend]: result };
+    firewall = result;
+    firewallSelectedBackend = result.backend;
+  }
+
+  function confirmFirewallSelection() {
+    if (!firewall) return;
+    openConfirmation(`Use ${firewall.backend}`, `Disable any other active firewall backend, then enable ${firewall.backend}.`, false, '', async () => {
+      storeFirewall(await ChangeFirewall(firewallChange('select', firewall!.backend)), true);
+    });
+  }
+
+  function openFirewallDialog(mode: typeof firewallDialogMode, rule: FirewallRuleView | null = null) {
+    if (!firewall) return;
+    firewallDialogMode = mode;
+    firewallOldRule = rule;
+    firewallRuleKind = rule?.kind === 'service' ? 'service' : 'port';
+    firewallTarget = rule?.target ?? '';
+    firewallProtocol = rule?.protocol || 'tcp';
+    firewallRuleDirection = rule?.direction || 'in';
+    firewallSource = rule?.source && rule.source !== 'Anywhere' ? rule.source : 'any';
+    firewallAction = rule?.action || 'allow';
+    firewallPolicy = 'deny';
+    firewallDirection = 'incoming';
+    firewallZone = firewall.zone || '';
+    firewallError = '';
+    firewallDialog.showModal();
+  }
+
+  function firewallRule() {
+    return { kind: firewallRuleKind, target: firewallTarget.trim(), protocol: firewallRuleKind === 'port' ? firewallProtocol : '', direction: firewall!.backend === 'ufw' ? firewallRuleDirection : '', source: firewall!.backend === 'ufw' ? firewallSource.trim() || 'any' : 'any', action: firewall!.backend === 'ufw' ? firewallAction : 'allow', mutable: true };
+  }
+
+  function emptyFirewallRule(): FirewallRuleView { return { kind: '', target: '', protocol: '', direction: '', source: '', action: '', mutable: false }; }
+
+  function firewallChange(operation: string, backend: string, fields: Partial<FirewallChangeInput> = {}): FirewallChangeInput {
+    return { operation, backend, zone: '', policy: '', direction: '', rule: emptyFirewallRule(), oldRule: emptyFirewallRule(), ...fields };
+  }
+
+  function saveFirewallConfiguration() {
+    if (!firewall) return;
+    firewallError = '';
+    const input = firewallDialogMode === 'policy'
+      ? firewallChange('policy-set', firewall.backend, { policy: firewallPolicy, direction: firewallDirection })
+      : firewallDialogMode === 'zone'
+        ? firewallChange('zone-set', firewall.backend, { zone: firewallZone.trim() })
+        : firewallChange(firewallDialogMode === 'edit' ? 'rule-edit' : 'rule-add', firewall.backend, { zone: firewall.zone, rule: firewallRule(), oldRule: firewallOldRule ?? emptyFirewallRule() });
+    const title = firewallDialogMode === 'policy' ? 'Change default policy' : firewallDialogMode === 'zone' ? 'Change default zone' : firewallDialogMode === 'edit' ? 'Edit firewall rule' : 'Add firewall rule';
+    const description = firewallDialogMode === 'policy' ? `Set ${firewallDirection} traffic to ${firewallPolicy} in UFW.` : firewallDialogMode === 'zone' ? `Set ${firewallZone.trim()} as the firewalld default zone after verifying SSH access.` : `${firewallDialogMode === 'edit' ? 'Replace' : 'Add'} ${firewallRuleKind === 'port' ? `${firewallTarget}/${firewallProtocol}` : firewallTarget} in ${firewall.backend}.`;
+    firewallDialog.close();
+    openConfirmation(title, description, firewallDialogMode !== 'add', '', async () => { storeFirewall(await ChangeFirewall(input)); });
+  }
+
+  function confirmFirewallRuleRemoval(rule: FirewallRuleView) {
+    if (!firewall) return;
+    openConfirmation('Remove firewall rule', `Remove ${rule.kind === 'port' ? `${rule.target}/${rule.protocol}` : rule.target} from ${firewall.backend}. SSH access rules cannot be removed.`, true, '', async () => {
+      storeFirewall(await ChangeFirewall(firewallChange('rule-remove', firewall!.backend, { zone: firewall!.zone, rule })));
+    });
   }
 
   function openOwnerDialog() {
@@ -1207,15 +1332,18 @@
       {:else if activeView === 'Firewall'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="firewall-heading">
           <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3">
-            <div><h2 id="firewall-heading" class="font-semibold">Firewall</h2><p class="text-xs text-surface-500">Status and rules reported by UFW or firewalld.</p></div>
-            <div class="ml-auto flex gap-2">{#if firewall?.installed}<button type="button" class="btn preset-tonal" on:click={() => openConfirmation('Configure firewall', `Change ${firewall?.backend} firewall configuration.`)}>Configure</button>{/if}<button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div>
+            <div><h2 id="firewall-heading" class="font-semibold">Firewall</h2><p class="text-xs text-surface-500">Manage one explicitly selected firewall backend.</p></div>
+            <div class="ml-auto flex gap-2">{#if firewall?.installed}<button type="button" class="btn preset-filled-primary-500" disabled={firewallContentLoading || firewallSelectedBackend !== firewall.backend || !firewall.active} title={firewall.active ? 'Add a firewall rule' : 'Enable this backend before adding rules'} on:click={() => openFirewallDialog('add')}>Add rule</button>{/if}<button type="button" class="btn preset-tonal" on:click={reloadFirewallStatus} disabled={firewallContentLoading}>Reload</button></div>
           </header>
           {#if !firewall?.installed}
             <div class="space-y-3 p-5"><p class="text-sm text-surface-600-400" role="status">Neither UFW nor firewalld is installed.</p><div class="flex gap-2"><button type="button" class="btn preset-tonal" on:click={() => openNamedPackageTransaction('Install UFW', 'Install UFW and leave it disabled until its initial policy and rules have been reviewed.', ['ufw'], 'install')}>Install UFW</button><button type="button" class="btn preset-tonal" on:click={() => openNamedPackageTransaction('Install firewalld', 'Install firewalld and leave it disabled until its initial zone and rules have been reviewed.', ['firewalld'], 'install')}>Install firewalld</button></div></div>
           {:else}
-            <div class="flex flex-wrap items-center gap-3 border-b border-surface-200-800 px-3 py-2 text-sm"><span class="font-medium uppercase">{firewall.backend}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {firewall.unknown ? 'border-warning-500/40 bg-warning-500/10 text-warning-700-300' : firewall.active ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-error-500/40 bg-error-500/10 text-error-700-300'}">{firewall.unknown ? 'Unknown' : firewall.active ? 'Active' : 'Inactive'}</span>{#if firewall.policy}<span class="text-xs text-surface-500">Policy: {firewall.policy}</span>{/if}{#if firewall.others.length}<span class="text-xs text-warning-700-300">Also installed: {firewall.others.join(', ')}</span>{/if}<button type="button" class="btn preset-filled-primary-500 ml-auto" on:click={() => confirmFirewallToggle(firewall)}>{firewall.active ? 'Disable' : 'Enable'}</button></div>
-            <div class="firewall-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Target</span><span>Action</span><span>Source</span></div>
-            <div class="system-table-body">{#each filteredFirewallRules as rule}<div class="firewall-grid grid border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-mono text-xs">{rule.target}</span><span>{rule.action}</span><span class="truncate">{rule.source}</span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching firewall rules.</p>{/each}</div>
+            {#if firewall.backends.length > 1}<div class="flex items-center gap-1 border-b border-surface-300-700 bg-surface-50-900 px-3 pt-2" role="tablist" aria-label="Installed firewall backends">{#each firewall.backends as backend}<button type="button" role="tab" aria-selected={firewallSelectedBackend === backend} class="border-b-2 px-3 py-2 text-sm {firewallSelectedBackend === backend ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500'}" on:click={() => selectFirewallBackend(backend)}>{backend === 'ufw' ? 'UFW' : 'firewalld'}</button>{/each}<span class="ml-auto pb-2 text-xs text-warning-700-300">Only one backend should be active.</span></div>{/if}
+            {#if firewallContentLoading}<div class="system-table-body grid place-items-center p-8" role="status"><div class="space-y-3 text-center"><div class="mx-auto size-6 animate-spin rounded-full border-2 border-surface-300-700 border-t-primary-500"></div><p class="text-sm text-surface-500">Loading {firewallSelectedBackend} status…</p></div></div>{:else if firewallContentError}<div class="system-table-body p-4"><p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-sm" role="alert">{firewallContentError}</p></div>{:else}
+            <div class="flex flex-wrap items-center gap-3 border-b border-surface-200-800 px-3 py-2 text-sm"><span class="font-medium uppercase">{firewall.backend}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {firewall.unknown ? 'border-warning-500/40 bg-warning-500/10 text-warning-700-300' : firewall.active ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-error-500/40 bg-error-500/10 text-error-700-300'}">{firewall.unknown ? 'Unknown' : firewall.active ? 'Active' : 'Inactive'}</span>{#if firewall.policy}<span class="text-xs text-surface-500">{firewall.policy}</span>{/if}<div class="ml-auto flex gap-2">{#if firewall.backend === 'ufw'}<button type="button" class="btn preset-tonal" on:click={() => openFirewallDialog('policy')}>Default policy</button>{:else}<button type="button" class="btn preset-tonal" disabled={!firewall.active} title={firewall.active ? 'Change the default firewalld zone' : 'Enable firewalld before changing zones'} on:click={() => openFirewallDialog('zone')}>Default zone</button>{/if}{#if firewall.backends.length > 1}<button type="button" class="btn preset-tonal" on:click={confirmFirewallSelection}>Use exclusively</button>{/if}<button type="button" class="btn {firewall.active ? 'border-error-500/50 text-error-700-300' : 'preset-filled-primary-500'}" on:click={() => confirmFirewallToggle(firewall)}>{firewall.active ? 'Disable' : 'Enable'}</button></div></div>
+            <div class="firewall-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Rule</span><span>Action</span><span>Source</span><span>Actions</span></div>
+            <div class="system-table-body">{#each filteredFirewallRules as rule}<div class="firewall-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-mono text-xs" title={rule.target}>{rule.kind === 'port' ? `${rule.target}/${rule.protocol}` : rule.target}</span><span class="capitalize">{rule.action}{rule.direction ? ` ${rule.direction}` : ''}</span><span class="truncate">{rule.source}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" disabled={!rule.mutable || !firewall.active} title={!rule.mutable ? 'Rich rules are read-only in this editor' : !firewall.active ? 'Enable this backend before editing rules' : 'Edit rule'} on:click={() => openFirewallDialog('edit', rule)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" disabled={!rule.mutable || !firewall.active || (rule.kind === 'service' && rule.target === 'ssh') || (rule.kind === 'port' && rule.target === '22' && rule.protocol === 'tcp')} title={!rule.mutable ? 'Rich rules are read-only in this editor' : !firewall.active ? 'Enable this backend before removing rules' : (rule.kind === 'service' && rule.target === 'ssh') || (rule.kind === 'port' && rule.target === '22' && rule.protocol === 'tcp') ? 'SSH access rules are protected from removal' : 'Remove rule'} on:click={() => confirmFirewallRuleRemoval(rule)}>Remove</button></span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching firewall rules.</p>{/each}</div>
+            {/if}
           {/if}
         </section>
       {:else if activeView === 'Samba Server'}
@@ -1410,6 +1538,28 @@
         {#if ruleError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{ruleError}</p>{/if}
       </div>
       <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={ruleSaving} on:click={() => ruleDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={ruleSaving || !ruleValue.trim()}>{ruleSaving ? 'Saving…' : ruleOperation === 'edit' ? 'Save' : 'Add rule'}</button></footer>
+    </form>
+  </dialog>
+
+  <dialog bind:this={firewallDialog} class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="firewall-dialog-title">
+    <form on:submit|preventDefault={saveFirewallConfiguration}>
+      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="firewall-dialog-title" class="font-semibold">{firewallDialogMode === 'policy' ? 'UFW default policy' : firewallDialogMode === 'zone' ? 'firewalld default zone' : firewallDialogMode === 'edit' ? 'Edit firewall rule' : 'Add firewall rule'}</h2></header>
+      <div class="space-y-3 p-4">
+        {#if firewallDialogMode === 'policy'}
+          <div class="grid grid-cols-2 gap-3"><label class="block text-sm"><span class="mb-1 block font-medium">Direction</span><select class="select app-input-surface w-full" bind:value={firewallDirection}><option value="incoming">Incoming</option><option value="outgoing">Outgoing</option><option value="routed">Routed</option></select></label><label class="block text-sm"><span class="mb-1 block font-medium">Policy</span><select class="select app-input-surface w-full" bind:value={firewallPolicy}><option value="allow">Allow</option><option value="deny">Deny</option><option value="reject">Reject</option></select></label></div>
+          <p class="text-xs text-surface-500">Restrictive incoming policies require an existing SSH allow rule.</p>
+        {:else if firewallDialogMode === 'zone'}
+          <label class="block text-sm"><span class="mb-1 block font-medium">Default zone</span><input class="input app-input-surface w-full" bind:value={firewallZone} maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_.-]*" required /></label>
+          <p class="text-xs text-surface-500">The selected zone must allow the SSH service. Sysentra verifies this before switching.</p>
+        {:else}
+          {#if firewall?.backend === 'firewalld'}<label class="block text-sm"><span class="mb-1 block font-medium">Rule type</span><select class="select app-input-surface w-full" bind:value={firewallRuleKind}><option value="port">Port</option><option value="service">Service</option></select></label>{/if}
+          <div class="grid grid-cols-[1fr_8rem] gap-3"><label class="block text-sm"><span class="mb-1 block font-medium">{firewallRuleKind === 'service' ? 'Service' : 'Port'}</span><input class="input app-input-surface w-full" type={firewallRuleKind === 'port' ? 'number' : 'text'} min={firewallRuleKind === 'port' ? 1 : undefined} max={firewallRuleKind === 'port' ? 65535 : undefined} bind:value={firewallTarget} placeholder={firewallRuleKind === 'service' ? 'https' : '443'} required /></label>{#if firewallRuleKind === 'port'}<label class="block text-sm"><span class="mb-1 block font-medium">Protocol</span><select class="select app-input-surface w-full" bind:value={firewallProtocol}><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>{/if}</div>
+          {#if firewall?.backend === 'ufw'}<div class="grid grid-cols-[1fr_7rem_1.2fr] gap-3"><label class="block text-sm"><span class="mb-1 block font-medium">Action</span><select class="select app-input-surface w-full" bind:value={firewallAction}><option value="allow">Allow</option><option value="deny">Deny</option><option value="reject">Reject</option><option value="limit">Rate limit</option></select></label><label class="block text-sm"><span class="mb-1 block font-medium">Direction</span><select class="select app-input-surface w-full" bind:value={firewallRuleDirection}><option value="in">In</option><option value="out">Out</option></select></label><label class="block text-sm"><span class="mb-1 block font-medium">Source</span><input class="input app-input-surface w-full font-mono" bind:value={firewallSource} placeholder="any or 10.0.0.0/8" required /></label></div>{/if}
+          <p class="text-xs text-surface-500">Rules are applied through {firewall?.backend}. SSH on port 22 is protected from editing or removal.</p>
+        {/if}
+        {#if firewallError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{firewallError}</p>{/if}
+      </div>
+      <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={firewallSaving} on:click={() => firewallDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={firewallSaving || (firewallDialogMode === 'zone' ? !firewallZone.trim() : firewallDialogMode === 'policy' ? false : !firewallTarget.trim())}>{firewallSaving ? 'Saving…' : 'Apply'}</button></footer>
     </form>
   </dialog>
 

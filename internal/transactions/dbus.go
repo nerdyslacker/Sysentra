@@ -172,6 +172,24 @@ func (c *DBusClient) AccountStatus(ctx context.Context) ([]accounts.Status, erro
 	return statuses, nil
 }
 
+func (c *DBusClient) ChangeFirewall(ctx context.Context, request security.FirewallRequest) error {
+	if err := c.checkVersion(ctx); err != nil {
+		return err
+	}
+	if err := request.Validate(); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	call := c.connection.Object(systemBusName, systemObjectPath).CallWithContext(ctx, systemInterface+".ChangeFirewall", 0, string(payload))
+	if call.Err != nil {
+		return fmt.Errorf("change firewall: %w", call.Err)
+	}
+	return nil
+}
+
 func NewSystemDBusClient() *DBusClient {
 	connection, err := dbus.ConnectSystemBus()
 	return &DBusClient{connection: connection, err: err}
