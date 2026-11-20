@@ -24,6 +24,24 @@ func (successfulRunner) Run(context.Context, string, ...string) (runner.Result, 
 	return runner.Result{}, nil
 }
 
+type recordingRunner struct {
+	calls     [][]string
+	fail      string
+	stderr    string
+	svRunning bool
+}
+
+func (r *recordingRunner) Run(_ context.Context, name string, args ...string) (runner.Result, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	if name == "/usr/bin/sv" && r.svRunning {
+		return runner.Result{Stdout: []byte("run: smbd: (pid 42) 10s\n")}, nil
+	}
+	if r.fail != "" && strings.Contains(strings.Join(append([]string{name}, args...), " "), r.fail) {
+		return runner.Result{Stderr: []byte(r.stderr)}, errors.New("command failed")
+	}
+	return runner.Result{}, nil
+}
+
 type grubRunner struct {
 	config string
 	saved  string
@@ -56,7 +74,7 @@ func TestManagerAddsRepositorySambaAndNFS(t *testing.T) {
 	config := filepath.Join(root, "xbps.d")
 	samba := filepath.Join(root, "samba", "smb.conf")
 	fstab := filepath.Join(root, "fstab")
-	manager := NewManager(runner.Exec{}, config, filepath.Join(root, "vendor"), samba, fstab)
+	manager := NewManager(successfulRunner{}, config, filepath.Join(root, "vendor"), samba, fstab)
 	requests := []security.SystemConfigRequest{
 		{Version: security.APIVersion, Operation: security.RepositoryAdd, Value: "https://repo.example.org/current", TrustConfirmed: true},
 		{Version: security.APIVersion, Operation: security.SambaAdd, Value: "Media", Path: "/srv/media", GuestOK: true},
@@ -77,6 +95,100 @@ func TestManagerAddsRepositorySambaAndNFS(t *testing.T) {
 		if err != nil || !strings.Contains(string(contents), want) {
 			t.Fatalf("%s = %q, %v", path, contents, err)
 		}
+	}
+}
+
+func TestManagerEditsAndRemovesSambaSharesAfterValidation(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "smb.conf")
+	if err := os.WriteFile(config, []byte("[global]\nworkgroup = WORKGROUP\n\n[Media]\npath = /srv/old\nread only = yes\n\n[Keep]\npath = /srv/keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commands := &recordingRunner{svRunning: true}
+	manager := NewManager(commands, filepath.Join(root, "xbps"), filepath.Join(root, "vendor"), config, filepath.Join(root, "fstab"))
+	edit := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaEdit, OldValue: "Media", Value: "Videos", Path: "/srv/videos", GuestOK: true}
+	if err := manager.Change(edit); err != nil {
+		t.Fatal(err)
+	}
+	remove := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaRemove, Value: "Videos"}
+	if err := manager.Change(remove); err != nil {
+		t.Fatal(err)
+	}
+	contents, _ := os.ReadFile(config)
+	if strings.Contains(string(contents), "[Media]") || strings.Contains(string(contents), "[Videos]") || !strings.Contains(string(contents), "[Keep]") {
+		t.Fatalf("config=%q", contents)
+	}
+	if len(commands.calls) != 6 || commands.calls[0][0] != "/usr/bin/testparm" || commands.calls[1][0] != "/usr/bin/sv" || commands.calls[2][0] != "/usr/bin/smbcontrol" {
+		t.Fatalf("calls=%#v", commands.calls)
+	}
+}
+
+func TestManagerKeepsSambaConfigWhenTestparmFails(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "smb.conf")
+	original := []byte("[global]\nworkgroup = WORKGROUP\n")
+	if err := os.WriteFile(config, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(&recordingRunner{fail: "testparm"}, filepath.Join(root, "xbps"), filepath.Join(root, "vendor"), config, filepath.Join(root, "fstab"))
+	err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaAdd, Value: "Media", Path: "/srv/media"})
+	contents, _ := os.ReadFile(config)
+	if err == nil || string(contents) != string(original) {
+		t.Fatalf("err=%v config=%q", err, contents)
+	}
+}
+
+func TestManagerEditsRemovesAndMountsNFS(t *testing.T) {
+	root := t.TempDir()
+	fstab := filepath.Join(root, "fstab")
+	if err := os.WriteFile(fstab, []byte("server:/old /mnt/old nfs4 rw,_netdev 0 0 # sysentra\nkeep:/data /mnt/keep nfs rw 0 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commands := &recordingRunner{}
+	manager := NewManager(commands, filepath.Join(root, "xbps"), filepath.Join(root, "vendor"), filepath.Join(root, "smb.conf"), fstab)
+	manager.mounts = filepath.Join(root, "mounts")
+	if err := os.WriteFile(manager.mounts, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	edit := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.NFSEdit, OldValue: "server:/old", OldPath: "/mnt/old", Value: "server:/new", Path: filepath.Join(root, "mnt-new"), Type: "nfs4", Options: "rw,_netdev"}
+	if err := manager.Change(edit); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.NFSMount, Value: "server:/new", Path: edit.Path}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manager.mounts, []byte("server:/new "+escapeFstab(edit.Path)+" nfs4 rw 0 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.NFSUnmount, Value: "server:/new", Path: edit.Path}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manager.mounts, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.NFSRemove, Value: "server:/new", Path: edit.Path}); err != nil {
+		t.Fatal(err)
+	}
+	contents, _ := os.ReadFile(fstab)
+	if strings.Contains(string(contents), "server:/") || !strings.Contains(string(contents), "keep:/data") {
+		t.Fatalf("fstab=%q", contents)
+	}
+	if len(commands.calls) != 2 || commands.calls[0][0] != "/usr/bin/mount" || commands.calls[1][0] != "/usr/bin/umount" {
+		t.Fatalf("calls=%#v", commands.calls)
+	}
+}
+
+func TestManagerRollsBackPartialNFSFailure(t *testing.T) {
+	root := t.TempDir()
+	fstab := filepath.Join(root, "fstab")
+	if err := os.WriteFile(fstab, []byte("server:/data /mnt/data nfs4 rw,_netdev 0 0 # sysentra\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commands := &recordingRunner{fail: "/usr/bin/mount", stderr: "mount.nfs4: No route to host"}
+	manager := NewManager(commands, filepath.Join(root, "xbps"), filepath.Join(root, "vendor"), filepath.Join(root, "smb.conf"), fstab)
+	err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.NFSMount, Value: "server:/data", Path: "/mnt/data"})
+	if err == nil || !strings.Contains(err.Error(), "No route to host") || len(commands.calls) != 2 || commands.calls[1][0] != "/usr/bin/umount" {
+		t.Fatalf("err=%v calls=%#v", err, commands.calls)
 	}
 }
 

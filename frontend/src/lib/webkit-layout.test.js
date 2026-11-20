@@ -98,6 +98,11 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.doesNotMatch(app, />Reload firewall<\/button>/);
   assert.doesNotMatch(app, />Reload status<\/button>/);
   assert.match(app, /Loading \{firewallSelectedBackend\} status/);
+  assert.match(app, /ChangeSambaShare\(configOperation/);
+  assert.match(app, /ChangeNFSMount\(configOperation/);
+  assert.match(app, /confirmSambaRemoval\(share\)/);
+  assert.match(app, /confirmNFSAction\(mount\.mounted \? 'unmount' : 'mount', mount\)/);
+  assert.match(app, /Unmount before editing persistent configuration/);
   assert.match(app, /ChangeTurnstileReady\(operation, names\)/);
   assert.match(app, /UpdateTurnstileEnvironment\(values\)/);
   assert.match(app, />Boot images <span/);

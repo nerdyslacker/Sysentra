@@ -2,13 +2,13 @@
   import { onMount } from 'svelte';
   import { Browser } from '@wailsio/runtime';
 
-  import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
+  import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, SambaShareView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
   import { Discover, FindOwningPackage, GetPackageDetails, ListAdditionalSources, ListInstalled, ListUpdates, SetAdditionalSourceEnabled } from '../bindings/sysentra/internal/app/packageservice';
   import { ListSystemFonts } from '../bindings/sysentra/internal/app/fontservice';
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
-  import { AddNFSMount, AddSambaShare, AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeMirror, ChangeRepository, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
+  import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
   import PackageDetailsSidebar from './components/PackageDetailsSidebar.svelte';
@@ -148,6 +148,7 @@
   let configValue = '';
   let configOldValue = '';
   let configPath = '';
+  let configOldPath = '';
   let configType = 'nfs4';
   let configOptions = 'rw,_netdev';
   let configReadOnly = true;
@@ -911,17 +912,18 @@
     openConfirmation(`${action} repository`, `${action} ${repository.url}. Disabling will comment its repository entry; enabling will restore it.`, false, '', async () => { repositories = await ChangeRepository(action.toLowerCase(), repository.url, '', false); });
   }
 
-  function openConfigDialog(kind: 'repository' | 'flatpak' | 'samba' | 'nfs', operation = 'add', repository: RepositoryView | FlatpakRemoteView | null = null) {
+  function openConfigDialog(kind: 'repository' | 'flatpak' | 'samba' | 'nfs', operation = 'add', item: RepositoryView | FlatpakRemoteView | SambaShareView | NFSMountView | null = null) {
     configKind = kind;
     configOperation = operation;
-    configValue = repository?.url ?? '';
-    configOldValue = repository?.url ?? '';
-    configName = kind === 'flatpak' && repository ? (repository as FlatpakRemoteView).name : '';
-    configPath = '';
-    configType = 'nfs4';
-    configOptions = 'rw,_netdev';
-    configReadOnly = true;
-    configGuestOK = false;
+    configValue = kind === 'samba' && item ? (item as SambaShareView).name : kind === 'nfs' && item ? (item as NFSMountView).source : (item as RepositoryView | FlatpakRemoteView | null)?.url ?? '';
+    configOldValue = configValue;
+    configName = kind === 'flatpak' && item ? (item as FlatpakRemoteView).name : '';
+    configPath = kind === 'samba' && item ? (item as SambaShareView).path : kind === 'nfs' && item ? (item as NFSMountView).target : '';
+    configOldPath = configPath;
+    configType = kind === 'nfs' && item ? (item as NFSMountView).type : 'nfs4';
+    configOptions = kind === 'nfs' && item ? (item as NFSMountView).options : 'rw,_netdev';
+    configReadOnly = kind === 'samba' && item ? (item as SambaShareView).readOnly : true;
+    configGuestOK = kind === 'samba' && item ? (item as SambaShareView).guestOK : false;
     configError = '';
     configTrustConfirmed = false;
     configRepositoryKey = null;
@@ -937,14 +939,28 @@
     try {
       if (configKind === 'repository') repositories = await ChangeRepository(configOperation, configValue.trim(), configOldValue, configTrustConfirmed);
       if (configKind === 'flatpak') flatpakRemotes = await ChangeFlatpakRemote(configOperation, configName.trim(), configValue.trim());
-      if (configKind === 'samba') sambaServer = await AddSambaShare(configValue.trim(), configPath.trim(), configReadOnly, configGuestOK);
-      if (configKind === 'nfs') nfsMounts = await AddNFSMount(configValue.trim(), configPath.trim(), configType, configOptions.trim());
+      if (configKind === 'samba') sambaServer = await ChangeSambaShare(configOperation, configValue.trim(), configOldValue, configPath.trim(), configReadOnly, configGuestOK);
+      if (configKind === 'nfs') nfsMounts = await ChangeNFSMount(configOperation, configValue.trim(), configOldValue, configPath.trim(), configOldPath, configType, configOptions.trim());
       configDialog.close();
     } catch (error) {
       configError = error instanceof Error ? error.message : String(error);
     } finally {
       configSaving = false;
     }
+  }
+
+  function confirmSambaRemoval(share: SambaShareView) {
+    openConfirmation('Remove Samba share', `Remove ${share.name} from Samba configuration without deleting shared files.`, true, '', async () => {
+      sambaServer = await ChangeSambaShare('remove', share.name, '', '', share.readOnly, share.guestOK);
+    });
+  }
+
+  function confirmNFSAction(operation: 'mount' | 'unmount' | 'remove', mount: NFSMountView) {
+    const action = operation === 'unmount' ? 'Unmount' : operation === 'mount' ? 'Mount' : 'Remove';
+    const description = operation === 'remove' ? `Remove ${mount.source} from persistent configuration without deleting local files.` : `${action} ${mount.source} at ${mount.target}.`;
+    openConfirmation(`${action} NFS mount`, description, operation !== 'mount', '', async () => {
+      nfsMounts = await ChangeNFSMount(operation, mount.source, '', mount.target, '', mount.type, mount.options);
+    });
   }
 
   async function inspectRepositoryKey() {
@@ -1349,12 +1365,12 @@
       {:else if activeView === 'Samba Server'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="samba-heading">
           <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="samba-heading" class="font-semibold">Samba server</h2><p class="text-xs text-surface-500">Shares configured in /etc/samba/smb.conf.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openConfigDialog('samba')}>Add share</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
-          {#if !sambaServer?.configured}<p class="system-table-body p-5 text-sm text-surface-500" role="status">Samba server configuration was not found.</p>{:else}<div class="samba-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Share</span><span>Path</span><span>Access</span><span>Guest</span><span>Actions</span></div><div class="system-table-body">{#each filteredSambaShares as share}<div class="samba-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-medium">{share.name}</span><span class="truncate font-mono text-xs">{share.path || '—'}</span><span>{share.readOnly ? 'Read only' : 'Writable'}</span><span>{share.guestOK ? 'Allowed' : 'Disabled'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" on:click={() => openConfirmation('Edit Samba share', `Edit ${share.name} after validating its local path and access policy.`)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" on:click={() => openConfirmation('Remove Samba share', `Remove ${share.name} from Samba configuration without deleting shared files.`, true)}>Remove</button></span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching Samba shares.</p>{/each}</div>{/if}
+          {#if !sambaServer?.configured}<p class="system-table-body p-5 text-sm text-surface-500" role="status">Samba server configuration was not found.</p>{:else}<div class="samba-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Share</span><span>Path</span><span>Access</span><span>Guest</span><span>Actions</span></div><div class="system-table-body">{#each filteredSambaShares as share}<div class="samba-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-medium">{share.name}</span><span class="truncate font-mono text-xs">{share.path || '—'}</span><span>{share.readOnly ? 'Read only' : 'Writable'}</span><span>{share.guestOK ? 'Allowed' : 'Disabled'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" on:click={() => openConfigDialog('samba', 'edit', share)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" on:click={() => confirmSambaRemoval(share)}>Remove</button></span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching Samba shares.</p>{/each}</div>{/if}
         </section>
       {:else if activeView === 'NFS Client'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="nfs-heading">
           <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="nfs-heading" class="font-semibold">NFS client</h2><p class="text-xs text-surface-500">Configured and mounted NFS filesystems.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openConfigDialog('nfs')}>Add mount</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
-          <div class="nfs-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Source</span><span>Mount point</span><span>Type</span><span>Options</span><span>Status</span><span>Actions</span></div><div class="system-table-body">{#each filteredNFSMounts as mount}<div class="nfs-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-mono text-xs">{mount.source}</span><span class="truncate font-mono text-xs">{mount.target}</span><span>{mount.type}</span><span class="nfs-options truncate text-xs" title={mount.options}>{mount.options}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {mount.mounted ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-surface-400/50 bg-surface-200-800 text-surface-700-300'}">{mount.mounted ? 'Mounted' : 'Unmounted'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" on:click={() => openConfirmation(mount.mounted ? 'Unmount NFS share' : 'Mount NFS share', `${mount.mounted ? 'Unmount' : 'Mount'} ${mount.source} at ${mount.target}.`, mount.mounted)}>{mount.mounted ? 'Unmount' : 'Mount'}</button>{#if mount.configured}<button type="button" class="btn preset-tonal" on:click={() => openConfirmation('Edit NFS mount', `Edit the configured mount for ${mount.source}.`)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" on:click={() => openConfirmation('Remove NFS mount', `Remove ${mount.source} from persistent configuration without deleting local files.`, true)}>Remove</button>{/if}</span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No NFS mounts found.</p>{/each}</div>
+          <div class="nfs-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Source</span><span>Mount point</span><span>Type</span><span>Options</span><span>Status</span><span>Actions</span></div><div class="system-table-body">{#each filteredNFSMounts as mount}<div class="nfs-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-mono text-xs">{mount.source}</span><span class="truncate font-mono text-xs">{mount.target}</span><span>{mount.type}</span><span class="nfs-options truncate text-xs" title={mount.options}>{mount.options}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {mount.mounted ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-surface-400/50 bg-surface-200-800 text-surface-700-300'}">{mount.mounted ? 'Mounted' : 'Unmounted'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" disabled={!mount.mounted && !mount.configured} title={!mount.mounted && !mount.configured ? 'Only configured NFS filesystems can be mounted' : ''} on:click={() => confirmNFSAction(mount.mounted ? 'unmount' : 'mount', mount)}>{mount.mounted ? 'Unmount' : 'Mount'}</button>{#if mount.configured}<button type="button" class="btn preset-tonal" disabled={mount.mounted} title={mount.mounted ? 'Unmount before editing persistent configuration' : ''} on:click={() => openConfigDialog('nfs', 'edit', mount)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" disabled={mount.mounted} title={mount.mounted ? 'Unmount before removing persistent configuration' : ''} on:click={() => confirmNFSAction('remove', mount)}>Remove</button>{/if}</span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No NFS mounts found.</p>{/each}</div>
         </section>
       {:else if activeView === 'Kernels'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="kernels-heading">
@@ -1581,7 +1597,7 @@
 
   <dialog bind:this={configDialog} class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="config-title">
     <form on:submit|preventDefault={saveConfig}>
-      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="config-title" class="font-semibold">{configOperation === 'edit' ? `Edit ${configKind === 'flatpak' ? 'Flatpak remote' : 'repository'}` : configKind === 'repository' ? 'Add repository' : configKind === 'flatpak' ? 'Add Flatpak remote' : configKind === 'samba' ? 'Add Samba share' : 'Add NFS mount'}</h2></header>
+      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="config-title" class="font-semibold">{configOperation === 'edit' ? `Edit ${configKind === 'flatpak' ? 'Flatpak remote' : configKind === 'samba' ? 'Samba share' : configKind === 'nfs' ? 'NFS mount' : 'repository'}` : configKind === 'repository' ? 'Add repository' : configKind === 'flatpak' ? 'Add Flatpak remote' : configKind === 'samba' ? 'Add Samba share' : 'Add NFS mount'}</h2></header>
       <div class="space-y-3 p-4">
         {#if configKind === 'flatpak'}<label class="block text-sm"><span class="mb-1 block font-medium">Remote name</span><input class="input app-input-surface w-full" bind:value={configName} placeholder="flathub" disabled={configOperation === 'edit'} required /></label>{/if}
         <label class="block text-sm"><span class="mb-1 block font-medium">{configKind === 'repository' || configKind === 'flatpak' ? 'HTTPS repository URL' : configKind === 'samba' ? 'Share name' : 'NFS source'}</span><input class="input app-input-surface w-full" bind:value={configValue} on:input={() => { configTrustConfirmed = false; configRepositoryKey = null; configKeyURL = ''; }} placeholder={configKind === 'repository' ? 'https://repo.example.org/current' : configKind === 'flatpak' ? 'https://flathub.org/repo/flathub.flatpakrepo' : configKind === 'samba' ? 'Media' : 'server:/data'} required /></label>

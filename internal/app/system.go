@@ -778,7 +778,11 @@ func (s *SystemService) ChangeMirror(value string) (MirrorCatalogView, error) {
 }
 
 func (s *SystemService) AddSambaShare(name, path string, readOnly, guestOK bool) (SambaServerView, error) {
-	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaAdd, Value: name, Path: path, ReadOnly: readOnly, GuestOK: guestOK}
+	return s.ChangeSambaShare("add", name, "", path, readOnly, guestOK)
+}
+
+func (s *SystemService) ChangeSambaShare(operation, name, oldName, path string, readOnly, guestOK bool) (SambaServerView, error) {
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SystemConfigOperation("samba-" + operation), Value: name, OldValue: oldName, Path: path, ReadOnly: readOnly, GuestOK: guestOK}
 	if err := request.Validate(); err != nil {
 		return SambaServerView{}, err
 	}
@@ -789,7 +793,11 @@ func (s *SystemService) AddSambaShare(name, path string, readOnly, guestOK bool)
 }
 
 func (s *SystemService) AddNFSMount(source, target, filesystem, options string) ([]NFSMountView, error) {
-	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.NFSAdd, Value: source, Path: target, Type: filesystem, Options: options}
+	return s.ChangeNFSMount("add", source, "", target, "", filesystem, options)
+}
+
+func (s *SystemService) ChangeNFSMount(operation, source, oldSource, target, oldTarget, filesystem, options string) ([]NFSMountView, error) {
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SystemConfigOperation("nfs-" + operation), Value: source, OldValue: oldSource, Path: target, OldPath: oldTarget, Type: filesystem, Options: options}
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import (
 	"sysentra/internal/repositories"
 	"sysentra/internal/security"
 	"sysentra/internal/services"
+	"sysentra/internal/shares"
 	"sysentra/internal/transactions"
 )
 
@@ -65,6 +66,11 @@ type accountReaderStub struct{}
 
 type firewallReaderStub struct{ state firewall.State }
 
+type sharesReaderStub struct{}
+
+func (sharesReaderStub) Samba() (shares.SambaServer, error) { return shares.SambaServer{}, nil }
+func (sharesReaderStub) NFS() ([]shares.NFSMount, error)    { return nil, nil }
+
 func (s firewallReaderStub) ReadBackend(context.Context, string) (firewall.State, error) {
 	return s.state, nil
 }
@@ -107,6 +113,23 @@ func TestFirewallUsesExplicitBackendAndTypedChange(t *testing.T) {
 	}
 	if client.firewallRequest.Rule.Target != "443" || client.firewallRequest.Zone != "public" {
 		t.Fatalf("request=%#v", client.firewallRequest)
+	}
+}
+
+func TestShareChangesPreserveOldIdentifiers(t *testing.T) {
+	client := &systemServiceClientStub{}
+	service := NewSystemService(nil, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil, sharesReaderStub{}, nil)
+	if _, err := service.ChangeSambaShare("edit", "Videos", "Media", "/srv/videos", false, true); err != nil {
+		t.Fatal(err)
+	}
+	if client.systemRequest.Operation != security.SambaEdit || client.systemRequest.OldValue != "Media" {
+		t.Fatalf("request=%#v", client.systemRequest)
+	}
+	if _, err := service.ChangeNFSMount("edit", "server:/new", "server:/old", "/mnt/new", "/mnt/old", "nfs4", "rw,_netdev"); err != nil {
+		t.Fatal(err)
+	}
+	if client.systemRequest.Operation != security.NFSEdit || client.systemRequest.OldPath != "/mnt/old" {
+		t.Fatalf("request=%#v", client.systemRequest)
 	}
 }
 func (s *systemServiceClientStub) Plan(_ context.Context, request security.PackageRequest) (transactions.Plan, error) {

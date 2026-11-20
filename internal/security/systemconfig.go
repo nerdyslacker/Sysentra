@@ -21,7 +21,13 @@ const (
 	MirrorUse         SystemConfigOperation = "mirror-use"
 	MirrorReset       SystemConfigOperation = "mirror-reset"
 	SambaAdd          SystemConfigOperation = "samba-add"
+	SambaEdit         SystemConfigOperation = "samba-edit"
+	SambaRemove       SystemConfigOperation = "samba-remove"
 	NFSAdd            SystemConfigOperation = "nfs-add"
+	NFSEdit           SystemConfigOperation = "nfs-edit"
+	NFSRemove         SystemConfigOperation = "nfs-remove"
+	NFSMount          SystemConfigOperation = "nfs-mount"
+	NFSUnmount        SystemConfigOperation = "nfs-unmount"
 	KernelSetDefault  SystemConfigOperation = "kernel-set-default"
 )
 
@@ -33,6 +39,7 @@ type SystemConfigRequest struct {
 	Value          string                `json:"value,omitempty"`
 	OldValue       string                `json:"oldValue,omitempty"`
 	Path           string                `json:"path,omitempty"`
+	OldPath        string                `json:"oldPath,omitempty"`
 	ReadOnly       bool                  `json:"readOnly,omitempty"`
 	GuestOK        bool                  `json:"guestOK,omitempty"`
 	Type           string                `json:"type,omitempty"`
@@ -65,9 +72,25 @@ func (r SystemConfigRequest) Validate() error {
 		if !shareNamePattern.MatchString(r.Value) || !validAbsolutePath(r.Path) {
 			return errors.New("a valid share name and absolute path are required")
 		}
+	case SambaEdit:
+		if !validSambaShareName(r.Value) || !validSambaShareName(r.OldValue) || !validAbsolutePath(r.Path) {
+			return errors.New("valid current and replacement share names and an absolute path are required")
+		}
+	case SambaRemove:
+		if !validSambaShareName(r.Value) {
+			return errors.New("a valid non-global share name is required")
+		}
 	case NFSAdd:
 		if !validNFSSource(r.Value) || !validAbsolutePath(r.Path) || (r.Type != "nfs" && r.Type != "nfs4") || !validMountOptions(r.Options) {
 			return errors.New("a valid NFS source, target, type, and options are required")
+		}
+	case NFSEdit:
+		if !validNFSSource(r.Value) || !validNFSSource(r.OldValue) || !validAbsolutePath(r.Path) || !validAbsolutePath(r.OldPath) || (r.Type != "nfs" && r.Type != "nfs4") || !validMountOptions(r.Options) {
+			return errors.New("valid current and replacement NFS entries are required")
+		}
+	case NFSRemove, NFSMount, NFSUnmount:
+		if !validNFSSource(r.Value) || !validAbsolutePath(r.Path) {
+			return errors.New("a valid NFS source and mount point are required")
 		}
 	case KernelSetDefault:
 		if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`).MatchString(r.Value) {
@@ -77,6 +100,10 @@ func (r SystemConfigRequest) Validate() error {
 		return errors.New("unsupported system configuration operation")
 	}
 	return nil
+}
+
+func validSambaShareName(value string) bool {
+	return shareNamePattern.MatchString(value) && !strings.EqualFold(value, "global")
 }
 
 func validHTTPSURL(value string) bool {

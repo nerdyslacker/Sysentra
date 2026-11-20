@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"sysentra/internal/runner"
 	"sysentra/internal/security"
@@ -22,12 +23,13 @@ type Manager struct {
 	runner                      runner.Runner
 	configurationDir, vendorDir string
 	sambaConfig, fstab          string
+	mounts                      string
 	bootRoot, efiMount          string
 	grubDefaults                string
 }
 
 func NewManager(commandRunner runner.Runner, configurationDir, vendorDir, sambaConfig, fstab string) *Manager {
-	return &Manager{runner: commandRunner, configurationDir: configurationDir, vendorDir: vendorDir, sambaConfig: sambaConfig, fstab: fstab, bootRoot: "/boot", efiMount: "/boot/efi", grubDefaults: "/etc/default/grub"}
+	return &Manager{runner: commandRunner, configurationDir: configurationDir, vendorDir: vendorDir, sambaConfig: sambaConfig, fstab: fstab, mounts: "/proc/self/mounts", bootRoot: "/boot", efiMount: "/boot/efi", grubDefaults: "/etc/default/grub"}
 }
 
 func (m *Manager) Change(request security.SystemConfigRequest) error {
@@ -41,10 +43,14 @@ func (m *Manager) Change(request security.SystemConfigRequest) error {
 		return m.changeMirror(strings.TrimSuffix(request.Value, "/"))
 	case security.MirrorReset:
 		return m.changeMirror(defaultMirror)
-	case security.SambaAdd:
-		return m.addSamba(request)
-	case security.NFSAdd:
-		return m.addNFS(request)
+	case security.SambaAdd, security.SambaEdit, security.SambaRemove:
+		return m.changeSamba(request)
+	case security.NFSAdd, security.NFSEdit, security.NFSRemove:
+		return m.changeNFS(request)
+	case security.NFSMount:
+		return m.mountNFS(request)
+	case security.NFSUnmount:
+		return m.unmountNFS(request)
 	case security.KernelSetDefault:
 		return m.setDefaultKernel(request.Value)
 	default:
@@ -160,49 +166,200 @@ func (m *Manager) changeMirror(mirror string) error {
 	return nil
 }
 
-func (m *Manager) addSamba(request security.SystemConfigRequest) error {
+func (m *Manager) changeSamba(request security.SystemConfigRequest) error {
 	contents, err := readRegular(m.sambaConfig)
 	if err != nil {
 		return err
 	}
-	header := "[" + request.Value + "]"
-	for _, line := range strings.Split(string(contents), "\n") {
-		if strings.EqualFold(strings.TrimSpace(line), header) {
-			return errors.New("Samba share already exists")
+	name := request.Value
+	if request.Operation == security.SambaEdit {
+		name = request.OldValue
+	}
+	start, end := sambaSection(contents, name)
+	if request.Operation == security.SambaAdd && start >= 0 {
+		return errors.New("Samba share already exists")
+	}
+	if request.Operation != security.SambaAdd && start < 0 {
+		return errors.New("Samba share was not found")
+	}
+	if request.Operation == security.SambaEdit && !strings.EqualFold(request.OldValue, request.Value) {
+		if duplicate, _ := sambaSection(contents, request.Value); duplicate >= 0 {
+			return errors.New("replacement Samba share already exists")
 		}
 	}
-	separator := ""
-	if len(contents) > 0 && !strings.HasSuffix(string(contents), "\n") {
-		separator = "\n"
+	block := ""
+	if request.Operation != security.SambaRemove {
+		block = fmt.Sprintf("[%s]\npath = %s\nread only = %s\nguest ok = %s\n", request.Value, request.Path, yesNo(request.ReadOnly), yesNo(request.GuestOK))
 	}
-	block := fmt.Sprintf("%s\n%s\npath = %s\nread only = %s\nguest ok = %s\n", separator, header, request.Path, yesNo(request.ReadOnly), yesNo(request.GuestOK))
-	return writeWithBackup(m.sambaConfig, append(contents, []byte(block)...))
+	updated := string(contents)
+	if request.Operation == security.SambaAdd {
+		updated = strings.TrimRight(updated, "\n") + "\n\n" + block
+	} else {
+		lines := strings.Split(updated, "\n")
+		lines = append(lines[:start], append(strings.Split(strings.TrimSuffix(block, "\n"), "\n"), lines[end:]...)...)
+		updated = strings.Trim(strings.Join(lines, "\n"), "\n") + "\n"
+	}
+	if err := m.validateSamba([]byte(updated)); err != nil {
+		return err
+	}
+	if err := writeWithBackup(m.sambaConfig, []byte(updated)); err != nil {
+		return err
+	}
+	status, _ := m.runner.Run(context.Background(), "/usr/bin/sv", "status", "/etc/runit/runsvdir/default/smbd")
+	if !strings.HasPrefix(strings.TrimSpace(string(status.Stdout)), "run:") {
+		return nil
+	}
+	if _, err := m.runner.Run(context.Background(), "/usr/bin/smbcontrol", "all", "reload-config"); err != nil {
+		if rollbackErr := atomicWrite(m.sambaConfig, contents); rollbackErr != nil {
+			return fmt.Errorf("reload Samba configuration: %w; rollback failed: %v", err, rollbackErr)
+		}
+		return fmt.Errorf("reload Samba configuration: %w", err)
+	}
+	return nil
 }
 
-func (m *Manager) addNFS(request security.SystemConfigRequest) error {
+func sambaSection(contents []byte, name string) (int, int) {
+	lines := strings.Split(string(contents), "\n")
+	start := -1
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			if start >= 0 {
+				return start, index
+			}
+			if strings.EqualFold(strings.TrimSpace(trimmed[1:len(trimmed)-1]), name) {
+				start = index
+			}
+		}
+	}
+	return start, len(lines)
+}
+
+func (m *Manager) validateSamba(contents []byte) error {
+	if err := os.MkdirAll(filepath.Dir(m.sambaConfig), 0o755); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(m.sambaConfig), ".sysentra-smb-*")
+	if err != nil {
+		return err
+	}
+	name := temporary.Name()
+	defer os.Remove(name)
+	if _, err = temporary.Write(contents); err == nil {
+		err = temporary.Close()
+	} else {
+		temporary.Close()
+	}
+	if err != nil {
+		return err
+	}
+	if result, err := m.runner.Run(context.Background(), "/usr/bin/testparm", "-s", name); err != nil {
+		return fmt.Errorf("validate Samba configuration: %s: %w", strings.TrimSpace(string(result.Stderr)), err)
+	}
+	return nil
+}
+
+func (m *Manager) changeNFS(request security.SystemConfigRequest) error {
 	contents, err := readRegular(m.fstab)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(request.Path, 0o755); err != nil {
-		return fmt.Errorf("create NFS mount point: %w", err)
+	oldSource, oldTarget := request.Value, request.Path
+	if request.Operation == security.NFSEdit {
+		oldSource, oldTarget = request.OldValue, request.OldPath
 	}
-	for _, line := range strings.Split(string(contents), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && (fields[0] == escapeFstab(request.Value) || fields[1] == escapeFstab(request.Path)) {
-			return errors.New("NFS source or mount point already exists")
+	lines := strings.Split(strings.TrimSuffix(string(contents), "\n"), "\n")
+	index := nfsEntry(lines, oldSource, oldTarget)
+	if request.Operation == security.NFSAdd && index >= 0 {
+		return errors.New("NFS source and mount point already exist")
+	}
+	if request.Operation != security.NFSAdd && index < 0 {
+		return errors.New("NFS entry was not found")
+	}
+	if request.Operation != security.NFSAdd && m.isNFSMounted(oldSource, oldTarget) {
+		return errors.New("unmount the NFS filesystem before changing persistent configuration")
+	}
+	if request.Operation != security.NFSRemove {
+		for candidate, line := range lines {
+			fields := strings.Fields(line)
+			if candidate != index && len(fields) >= 3 && (fields[2] == "nfs" || fields[2] == "nfs4") && (fields[0] == escapeFstab(request.Value) || fields[1] == escapeFstab(request.Path)) {
+				return errors.New("NFS source or mount point already exists")
+			}
+		}
+		if err := os.MkdirAll(request.Path, 0o755); err != nil {
+			return fmt.Errorf("create NFS mount point: %w", err)
 		}
 	}
-	options := request.Options
-	if options == "" {
-		options = "defaults,_netdev"
+	if request.Operation == security.NFSRemove {
+		lines = append(lines[:index], lines[index+1:]...)
+	} else {
+		options := request.Options
+		if options == "" {
+			options = "defaults,_netdev"
+		}
+		line := fmt.Sprintf("%s %s %s %s 0 0 # sysentra", escapeFstab(request.Value), escapeFstab(request.Path), request.Type, options)
+		if request.Operation == security.NFSAdd {
+			lines = append(lines, line)
+		} else {
+			lines[index] = line
+		}
 	}
-	separator := ""
-	if len(contents) > 0 && !strings.HasSuffix(string(contents), "\n") {
-		separator = "\n"
+	return writeWithBackup(m.fstab, []byte(strings.Trim(strings.Join(lines, "\n"), "\n")+"\n"))
+}
+
+func nfsEntry(lines []string, source, target string) int {
+	for index, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && (fields[2] == "nfs" || fields[2] == "nfs4") && fields[0] == escapeFstab(source) && fields[1] == escapeFstab(target) {
+			return index
+		}
 	}
-	line := fmt.Sprintf("%s%s %s %s %s 0 0 # sysentra\n", separator, escapeFstab(request.Value), escapeFstab(request.Path), request.Type, options)
-	return writeWithBackup(m.fstab, append(contents, []byte(line)...))
+	return -1
+}
+
+func (m *Manager) mountNFS(request security.SystemConfigRequest) error {
+	contents, err := readRegular(m.fstab)
+	if err != nil {
+		return err
+	}
+	if nfsEntry(strings.Split(string(contents), "\n"), request.Value, request.Path) < 0 {
+		return errors.New("NFS entry is not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	result, err := m.runner.Run(ctx, "/usr/bin/mount", "--", request.Path)
+	cancel()
+	if err != nil {
+		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, _ = m.runner.Run(rollbackCtx, "/usr/bin/umount", "--", request.Path)
+		rollbackCancel()
+		return commandFailure("mount NFS filesystem", result, err)
+	}
+	return nil
+}
+
+func (m *Manager) unmountNFS(request security.SystemConfigRequest) error {
+	if !m.isNFSMounted(request.Value, request.Path) {
+		return errors.New("requested NFS filesystem is not mounted")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if result, err := m.runner.Run(ctx, "/usr/bin/umount", "--", request.Path); err != nil {
+		return commandFailure("unmount NFS filesystem", result, err)
+	}
+	return nil
+}
+
+func commandFailure(action string, result runner.Result, err error) error {
+	diagnostic := strings.TrimSpace(string(result.Stderr))
+	if diagnostic != "" {
+		return fmt.Errorf("%s: %s: %w", action, diagnostic, err)
+	}
+	return fmt.Errorf("%s: %w", action, err)
+}
+
+func (m *Manager) isNFSMounted(source, target string) bool {
+	contents, err := os.ReadFile(m.mounts)
+	return err == nil && nfsEntry(strings.Split(string(contents), "\n"), source, target) >= 0
 }
 
 func nonemptyLines(contents []byte) []string {
