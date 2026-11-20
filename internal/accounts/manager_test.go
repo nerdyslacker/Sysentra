@@ -95,3 +95,51 @@ func TestManagerCreatesUserWithoutHome(t *testing.T) {
 		t.Fatalf("command=%q args=%#v", command.name, command.args)
 	}
 }
+
+func TestManagerEditsUserPrimaryGroupAndPasswordLock(t *testing.T) {
+	root := t.TempDir()
+	passwd := filepath.Join(root, "passwd")
+	group := filepath.Join(root, "group")
+	_ = os.WriteFile(passwd, []byte("alice:x:1000:1000::/home/alice:/bin/sh\n"), 0o600)
+	_ = os.WriteFile(group, []byte("alice:x:1000:\nusers:x:1001:\n"), 0o600)
+	tests := []struct {
+		request security.AccountRequest
+		args    []string
+	}{
+		{security.AccountRequest{Version: security.APIVersion, Operation: security.UserEdit, User: "alice", Home: "/srv/alice", Shell: "/bin/zsh", MoveHome: true}, []string{"--home", "/srv/alice", "--move-home", "--shell", "/bin/zsh", "alice"}},
+		{security.AccountRequest{Version: security.APIVersion, Operation: security.PrimaryGroupChange, User: "alice", Group: "users"}, []string{"--gid", "users", "alice"}},
+		{security.AccountRequest{Version: security.APIVersion, Operation: security.PasswordLock, User: "alice"}, []string{"--lock", "alice"}},
+		{security.AccountRequest{Version: security.APIVersion, Operation: security.PasswordUnlock, User: "alice"}, []string{"--unlock", "alice"}},
+	}
+	for _, test := range tests {
+		command := &recordingRunner{}
+		manager := NewManager(command)
+		manager.inventory = &Inventory{passwd: passwd, group: group}
+		if err := manager.Change(context.Background(), test.request); err != nil {
+			t.Fatalf("%s: %v", test.request.Operation, err)
+		}
+		if command.name != "/usr/bin/usermod" || !reflect.DeepEqual(command.args, test.args) {
+			t.Fatalf("%s command=%q args=%#v", test.request.Operation, command.name, command.args)
+		}
+	}
+}
+
+func TestManagerProtectsSystemUsersFromAccountMutation(t *testing.T) {
+	root := t.TempDir()
+	passwd := filepath.Join(root, "passwd")
+	group := filepath.Join(root, "group")
+	_ = os.WriteFile(passwd, []byte("root:x:0:0::/root:/bin/sh\n"), 0o600)
+	_ = os.WriteFile(group, []byte("root:x:0:\nusers:x:1001:\n"), 0o600)
+	for _, request := range []security.AccountRequest{
+		{Version: security.APIVersion, Operation: security.UserEdit, User: "root", Shell: "/bin/zsh"},
+		{Version: security.APIVersion, Operation: security.PrimaryGroupChange, User: "root", Group: "users"},
+		{Version: security.APIVersion, Operation: security.PasswordLock, User: "root"},
+	} {
+		command := &recordingRunner{}
+		manager := NewManager(command)
+		manager.inventory = &Inventory{passwd: passwd, group: group}
+		if err := manager.Change(context.Background(), request); err == nil || command.name != "" {
+			t.Fatalf("%s reached command: %q", request.Operation, command.name)
+		}
+	}
+}

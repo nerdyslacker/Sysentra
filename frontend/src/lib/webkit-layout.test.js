@@ -77,6 +77,14 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, />Add service<\/button>/);
   assert.doesNotMatch(app, /id="service-action"/);
   assert.match(app, /operation === 'delete'/);
+  assert.match(app, /EditUser\(accountUser\.trim\(\), accountHome\.trim\(\), accountShell\.trim\(\), accountMoveHome\)/);
+  assert.match(app, /'primary-group-change'/);
+  assert.match(app, /'password-unlock' : 'password-lock'/);
+  assert.match(app, /ListAccountHistory\(\)/);
+  assert.match(app, /user\.sessions \|\| user\.processes/);
+  assert.match(app, /<details class="account-actions relative">/);
+  assert.match(app, /No supplementary groups to unassign/);
+  assert.match(app, /System accounts cannot be removed/);
   assert.match(app, /ChangeTurnstileReady\(operation, names\)/);
   assert.match(app, /UpdateTurnstileEnvironment\(values\)/);
   assert.match(app, />Boot images <span/);

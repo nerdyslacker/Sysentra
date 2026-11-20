@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"sysentra/internal/accounts"
@@ -59,6 +62,7 @@ type serviceReader interface {
 	ChangeXBPSRule(context.Context, security.XBPSRuleRequest) error
 	ChangeSystemConfig(context.Context, security.SystemConfigRequest) error
 	ChangeAccount(context.Context, security.AccountRequest) error
+	AccountStatus(context.Context) ([]accounts.Status, error)
 }
 type userServiceReader interface {
 	List(context.Context) ([]services.Service, error)
@@ -113,13 +117,17 @@ type NFSMountView struct {
 }
 
 type UserView struct {
-	Name      string   `json:"name"`
-	UID       int      `json:"uid"`
-	GID       int      `json:"gid"`
-	Home      string   `json:"home"`
-	Shell     string   `json:"shell"`
-	Groups    []string `json:"groups"`
-	Removable bool     `json:"removable"`
+	Name         string   `json:"name"`
+	UID          int      `json:"uid"`
+	GID          int      `json:"gid"`
+	Home         string   `json:"home"`
+	Shell        string   `json:"shell"`
+	Groups       []string `json:"groups"`
+	Removable    bool     `json:"removable"`
+	PrimaryGroup string   `json:"primaryGroup"`
+	Password     string   `json:"password"`
+	Processes    int      `json:"processes"`
+	Sessions     int      `json:"sessions"`
 }
 type GroupView struct {
 	Name      string   `json:"name"`
@@ -130,6 +138,12 @@ type GroupView struct {
 type AccountsView struct {
 	Users  []UserView  `json:"users"`
 	Groups []GroupView `json:"groups"`
+}
+
+type AccountHistoryView struct {
+	Time      string `json:"time"`
+	Operation string `json:"operation"`
+	Target    string `json:"target"`
 }
 
 type KernelView struct {
@@ -269,25 +283,31 @@ type DriverCatalogView struct {
 }
 
 type SystemService struct {
-	kernels           kernelReader
-	repositories      repositoryReader
-	mirrors           mirrorReader
-	recovery          mirrorRecoveryStore
-	xbpsConfig        xbpsConfigReader
-	firmware          firmwareReader
-	firewall          firewallReader
-	drivers           driverReader
-	services          serviceReader
-	userServices      userServiceReader
-	userManager       userServiceManager
-	turnstileServices userServiceReader
-	turnstileManager  *services.TurnstileManager
-	shares            shareReader
-	accounts          accountReader
+	kernels            kernelReader
+	repositories       repositoryReader
+	mirrors            mirrorReader
+	recovery           mirrorRecoveryStore
+	xbpsConfig         xbpsConfigReader
+	firmware           firmwareReader
+	firewall           firewallReader
+	drivers            driverReader
+	services           serviceReader
+	userServices       userServiceReader
+	userManager        userServiceManager
+	turnstileServices  userServiceReader
+	turnstileManager   *services.TurnstileManager
+	shares             shareReader
+	accounts           accountReader
+	accountHistoryMu   sync.Mutex
+	accountHistoryPath string
 }
 
 func NewSystemService(kernels kernelReader, repos repositoryReader, mirrorCatalog mirrorReader, recovery mirrorRecoveryStore, config xbpsConfigReader, firmwareInventory firmwareReader, firewallInventory firewallReader, driverInventory driverReader, serviceInventory serviceReader, userInventory userServiceReader, userManager userServiceManager, turnstileInventory userServiceReader, turnstileManager *services.TurnstileManager, shareInventory shareReader, accountInventory accountReader) *SystemService {
-	return &SystemService{kernels: kernels, repositories: repos, mirrors: mirrorCatalog, recovery: recovery, xbpsConfig: config, firmware: firmwareInventory, firewall: firewallInventory, drivers: driverInventory, services: serviceInventory, userServices: userInventory, userManager: userManager, turnstileServices: turnstileInventory, turnstileManager: turnstileManager, shares: shareInventory, accounts: accountInventory}
+	service := &SystemService{kernels: kernels, repositories: repos, mirrors: mirrorCatalog, recovery: recovery, xbpsConfig: config, firmware: firmwareInventory, firewall: firewallInventory, drivers: driverInventory, services: serviceInventory, userServices: userInventory, userManager: userManager, turnstileServices: turnstileInventory, turnstileManager: turnstileManager, shares: shareInventory, accounts: accountInventory}
+	if configDir, err := os.UserConfigDir(); err == nil {
+		service.accountHistoryPath = filepath.Join(configDir, "sysentra", "accounts.json")
+	}
+	return service
 }
 
 func (s *SystemService) ListAccounts() (AccountsView, error) {
@@ -295,9 +315,25 @@ func (s *SystemService) ListAccounts() (AccountsView, error) {
 	if err != nil {
 		return AccountsView{}, err
 	}
+	statuses, err := s.services.AccountStatus(context.Background())
+	if err != nil {
+		return AccountsView{}, err
+	}
+	statusByName := make(map[string]accounts.Status, len(statuses))
+	for _, status := range statuses {
+		statusByName[status.Name] = status
+	}
 	view := AccountsView{Users: make([]UserView, len(users)), Groups: make([]GroupView, len(groups))}
 	for index, user := range users {
-		view.Users[index] = UserView{Name: user.Name, UID: user.UID, GID: user.GID, Home: user.Home, Shell: user.Shell, Groups: user.Groups, Removable: user.UID >= 1000}
+		status := statusByName[user.Name]
+		primary := ""
+		for _, group := range groups {
+			if group.GID == user.GID {
+				primary = group.Name
+				break
+			}
+		}
+		view.Users[index] = UserView{Name: user.Name, UID: user.UID, GID: user.GID, Home: user.Home, Shell: user.Shell, Groups: user.Groups, Removable: user.UID >= 1000, PrimaryGroup: primary, Password: status.Password, Processes: status.Processes, Sessions: status.Sessions}
 	}
 	for index, group := range groups {
 		view.Groups[index] = GroupView{Name: group.Name, GID: group.GID, Members: group.Members, Removable: group.GID >= 1000}
@@ -307,34 +343,31 @@ func (s *SystemService) ListAccounts() (AccountsView, error) {
 
 func (s *SystemService) ChangeAccount(operation, user, group string) (AccountsView, error) {
 	request := security.AccountRequest{Version: security.APIVersion, Operation: security.AccountOperation(operation), User: user, Group: group}
-	if err := request.Validate(); err != nil {
-		return AccountsView{}, err
-	}
-	if err := s.services.ChangeAccount(context.Background(), request); err != nil {
-		return AccountsView{}, err
-	}
-	return s.ListAccounts()
+	return s.changeAccount(request)
 }
 
 func (s *SystemService) AssignAccountGroups(user string, groups []string) (AccountsView, error) {
 	request := security.AccountRequest{Version: security.APIVersion, Operation: security.MembershipAdd, User: user, Groups: groups}
-	if err := request.Validate(); err != nil {
-		return AccountsView{}, err
-	}
-	if err := s.services.ChangeAccount(context.Background(), request); err != nil {
-		return AccountsView{}, err
-	}
-	return s.ListAccounts()
+	return s.changeAccount(request)
 }
 
 func (s *SystemService) CreateUser(user string, createHome bool, home string) (AccountsView, error) {
 	request := security.AccountRequest{Version: security.APIVersion, Operation: security.UserAdd, User: user, CreateHome: createHome, Home: home}
+	return s.changeAccount(request)
+}
+
+func (s *SystemService) EditUser(user, home, shell string, moveHome bool) (AccountsView, error) {
+	return s.changeAccount(security.AccountRequest{Version: security.APIVersion, Operation: security.UserEdit, User: user, Home: home, Shell: shell, MoveHome: moveHome})
+}
+
+func (s *SystemService) changeAccount(request security.AccountRequest) (AccountsView, error) {
 	if err := request.Validate(); err != nil {
 		return AccountsView{}, err
 	}
 	if err := s.services.ChangeAccount(context.Background(), request); err != nil {
 		return AccountsView{}, err
 	}
+	s.recordAccountHistory(request)
 	return s.ListAccounts()
 }
 

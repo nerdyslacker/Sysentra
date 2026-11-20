@@ -13,10 +13,12 @@ import (
 type Manager struct {
 	runner    runner.Runner
 	inventory *Inventory
+	shadow    string
+	proc      string
 }
 
 func NewManager(commandRunner runner.Runner) *Manager {
-	return &Manager{runner: commandRunner, inventory: NewInventory()}
+	return &Manager{runner: commandRunner, inventory: NewInventory(), shadow: "/etc/shadow", proc: "/proc"}
 }
 
 func (m *Manager) Change(ctx context.Context, request security.AccountRequest) error {
@@ -29,6 +31,14 @@ func (m *Manager) Change(ctx context.Context, request security.AccountRequest) e
 	}
 	user, userFound := findUser(users, request.User)
 	group, groupFound := findGroup(groups, request.Group)
+	if request.Operation == security.UserEdit || request.Operation == security.PrimaryGroupChange || request.Operation == security.PasswordLock || request.Operation == security.PasswordUnlock {
+		if !userFound {
+			return errors.New("user does not exist")
+		}
+		if user.UID < 1000 {
+			return errors.New("system users cannot be modified")
+		}
+	}
 	var command string
 	var args []string
 	switch request.Operation {
@@ -85,6 +95,28 @@ func (m *Manager) Change(ctx context.Context, request security.AccountRequest) e
 			return errors.New("a user's primary group cannot be unassigned")
 		}
 		command, args = "/usr/bin/gpasswd", []string{"--delete", request.User, request.Group}
+	case security.UserEdit:
+		if request.Home != "" {
+			args = append(args, "--home", request.Home)
+			if request.MoveHome {
+				args = append(args, "--move-home")
+			}
+		}
+		if request.Shell != "" {
+			args = append(args, "--shell", request.Shell)
+		}
+		command, args = "/usr/bin/usermod", append(args, request.User)
+	case security.PrimaryGroupChange:
+		if !groupFound {
+			return errors.New("group does not exist")
+		}
+		command, args = "/usr/bin/usermod", []string{"--gid", request.Group, request.User}
+	case security.PasswordLock:
+		command, args = "/usr/bin/usermod", []string{"--lock", request.User}
+	case security.PasswordUnlock:
+		command, args = "/usr/bin/usermod", []string{"--unlock", request.User}
+	default:
+		return errors.New("unsupported account operation")
 	}
 	result, err := m.runner.Run(ctx, command, args...)
 	if err != nil {

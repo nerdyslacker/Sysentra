@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"sysentra/internal/accounts"
 	"sysentra/internal/kernel"
 	"sysentra/internal/repositories"
 	"sysentra/internal/security"
@@ -28,6 +30,10 @@ type systemServiceClientStub struct {
 	commits        int
 }
 
+func (s *systemServiceClientStub) AccountStatus(context.Context) ([]accounts.Status, error) {
+	return []accounts.Status{{Name: "alice", Password: "Locked", Processes: 3, Sessions: 1}}, nil
+}
+
 func (s *systemServiceClientStub) ListServices(context.Context) ([]services.Service, error) {
 	return nil, nil
 }
@@ -47,6 +53,32 @@ func (s *systemServiceClientStub) ChangeSystemConfig(_ context.Context, request 
 }
 func (s *systemServiceClientStub) ChangeAccount(context.Context, security.AccountRequest) error {
 	return nil
+}
+
+type accountReaderStub struct{}
+
+func (accountReaderStub) List() ([]accounts.User, []accounts.Group, error) {
+	return []accounts.User{{Name: "alice", UID: 1000, GID: 1000, Home: "/home/alice", Shell: "/bin/sh", Groups: []string{"alice"}}}, []accounts.Group{{Name: "alice", GID: 1000}}, nil
+}
+
+func TestAccountsIncludePrivilegedStatusAndHistory(t *testing.T) {
+	client := &systemServiceClientStub{}
+	service := NewSystemService(nil, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil, nil, accountReaderStub{})
+	service.accountHistoryPath = filepath.Join(t.TempDir(), "accounts.json")
+	view, err := service.ListAccounts()
+	if err != nil || len(view.Users) != 1 || view.Users[0].Password != "Locked" || view.Users[0].Processes != 3 || view.Users[0].Sessions != 1 || view.Users[0].PrimaryGroup != "alice" {
+		t.Fatalf("view=%#v err=%v", view, err)
+	}
+	if _, err := service.EditUser("alice", "/srv/alice", "/bin/zsh", true); err != nil {
+		t.Fatal(err)
+	}
+	history, err := service.ListAccountHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].Operation != string(security.UserEdit) || history[0].Target != "alice" {
+		t.Fatalf("history=%#v", history)
+	}
 }
 func (s *systemServiceClientStub) Plan(_ context.Context, request security.PackageRequest) (transactions.Plan, error) {
 	s.request = request

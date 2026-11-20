@@ -7,6 +7,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
+	"sysentra/internal/accounts"
 	"sysentra/internal/security"
 	"sysentra/internal/services"
 )
@@ -150,6 +151,25 @@ func (c *DBusClient) ChangeAccount(ctx context.Context, request security.Account
 		return fmt.Errorf("change account: %w", call.Err)
 	}
 	return nil
+}
+
+func (c *DBusClient) AccountStatus(ctx context.Context) ([]accounts.Status, error) {
+	if err := c.checkVersion(ctx); err != nil {
+		return nil, err
+	}
+	var payload string
+	call := c.connection.Object(systemBusName, systemObjectPath).CallWithContext(ctx, systemInterface+".AccountStatus", 0)
+	if call.Err != nil {
+		return nil, fmt.Errorf("query account status: %w", call.Err)
+	}
+	if err := call.Store(&payload); err != nil {
+		return nil, fmt.Errorf("decode account status response: %w", err)
+	}
+	var statuses []accounts.Status
+	if err := json.Unmarshal([]byte(payload), &statuses); err != nil {
+		return nil, fmt.Errorf("parse account status response: %w", err)
+	}
+	return statuses, nil
 }
 
 func NewSystemDBusClient() *DBusClient {

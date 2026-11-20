@@ -40,6 +40,7 @@ const introspection = `<node>
     <method name="ChangeXBPSRule"><arg direction="in" type="s" name="request"/></method>
     <method name="ChangeSystemConfig"><arg direction="in" type="s" name="request"/></method>
     <method name="ChangeAccount"><arg direction="in" type="s" name="request"/></method>
+    <method name="AccountStatus"><arg direction="out" type="s" name="status"/></method>
   </interface>` + introspect.IntrospectDataString + `</node>`
 
 type api struct {
@@ -133,6 +134,18 @@ func (a api) ChangeAccount(sender dbus.Sender, payload string) *dbus.Error {
 		return dbus.MakeFailedError(err)
 	}
 	return nil
+}
+
+func (a api) AccountStatus(sender dbus.Sender) (string, *dbus.Error) {
+	items, err := a.accounts.Status(context.Background(), string(sender))
+	if err != nil {
+		return "", dbus.MakeFailedError(err)
+	}
+	encoded, err := json.Marshal(items)
+	if err != nil {
+		return "", dbus.MakeFailedError(err)
+	}
+	return string(encoded), nil
 }
 
 func main() {
