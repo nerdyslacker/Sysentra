@@ -77,7 +77,7 @@ func TestManagerAddsRepositorySambaAndNFS(t *testing.T) {
 	manager := NewManager(successfulRunner{}, config, filepath.Join(root, "vendor"), samba, fstab)
 	requests := []security.SystemConfigRequest{
 		{Version: security.APIVersion, Operation: security.RepositoryAdd, Value: "https://repo.example.org/current", TrustConfirmed: true},
-		{Version: security.APIVersion, Operation: security.SambaAdd, Value: "Media", Path: "/srv/media", GuestOK: true},
+		{Version: security.APIVersion, Operation: security.SambaAdd, Value: "Media", Path: "/srv/media", Comment: "Shared media", Browseable: true, GuestOK: true, FollowSymlinks: true, ValidUsers: "alice, @media", WriteList: "@editors", ReadList: "bob", ForceUser: "media", ForceGroup: "media", CreateMask: "0770", DirectoryMask: "0775"},
 		{Version: security.APIVersion, Operation: security.NFSAdd, Value: "server:/data", Path: filepath.Join(root, "mnt"), Type: "nfs4", Options: "rw,_netdev"},
 	}
 	for _, request := range requests {
@@ -94,6 +94,12 @@ func TestManagerAddsRepositorySambaAndNFS(t *testing.T) {
 		contents, err := os.ReadFile(path)
 		if err != nil || !strings.Contains(string(contents), want) {
 			t.Fatalf("%s = %q, %v", path, contents, err)
+		}
+	}
+	sambaContents, _ := os.ReadFile(samba)
+	for _, want := range []string{"comment = Shared media", "browseable = yes", "follow symlinks = yes", "valid users = alice, @media", "write list = @editors", "read list = bob", "force user = media", "force group = media", "create mask = 0770", "directory mask = 0775"} {
+		if !strings.Contains(string(sambaContents), want) {
+			t.Fatalf("samba config missing %q: %s", want, sambaContents)
 		}
 	}
 }
@@ -135,6 +141,52 @@ func TestManagerKeepsSambaConfigWhenTestparmFails(t *testing.T) {
 	contents, _ := os.ReadFile(config)
 	if err == nil || string(contents) != string(original) {
 		t.Fatalf("err=%v config=%q", err, contents)
+	}
+}
+
+func TestManagerPreservesUnknownSambaShareOptionsOnEdit(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "smb.conf")
+	original := []byte("[Media]\npath = /srv/old\nvfs objects = recycle\nrecycle:keeptree = yes\n")
+	if err := os.WriteFile(config, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(successfulRunner{}, filepath.Join(root, "xbps"), filepath.Join(root, "vendor"), config, filepath.Join(root, "fstab"))
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaEdit, OldValue: "Media", Value: "Media", Path: "/srv/new", Browseable: true, FollowSymlinks: true, CreateMask: "0744", DirectoryMask: "0755"}
+	if err := manager.Change(request); err != nil {
+		t.Fatal(err)
+	}
+	contents, _ := os.ReadFile(config)
+	if !strings.Contains(string(contents), "vfs objects = recycle") || !strings.Contains(string(contents), "recycle:keeptree = yes") {
+		t.Fatalf("unknown options were lost: %s", contents)
+	}
+}
+
+func TestManagerUpdatesSambaGlobalConfiguration(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "smb.conf")
+	original := []byte("[global]\nworkgroup = WORKGROUP\nserver string = Void\n\n[Media]\npath = /srv/media\n")
+	if err := os.WriteFile(config, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(successfulRunner{}, filepath.Join(root, "xbps"), filepath.Join(root, "vendor"), config, filepath.Join(root, "fstab"))
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaGlobalSet, Protocol: "SMB3", DefaultMask: "0775", Printing: true, MapGuest: true}
+	if err := manager.Change(request); err != nil {
+		t.Fatal(err)
+	}
+	contents, _ := os.ReadFile(config)
+	for _, want := range []string{"server string = Void", "server min protocol = SMB3", "client min protocol = SMB3", "create mask = 0775", "directory mask = 0775", "map to guest = Bad User", "# BEGIN SYSENTRA PRINTING", "[printers]", "[print$]", "[Media]"} {
+		if !strings.Contains(string(contents), want) {
+			t.Fatalf("global config missing %q: %s", want, contents)
+		}
+	}
+}
+
+func TestManagerPreservesUnclosedSambaPrintingMarker(t *testing.T) {
+	lines := []string{"[global]", "# BEGIN SYSENTRA PRINTING", "server string = keep", "[Media]", "path = /srv/media"}
+	got := strings.Join(removeManagedSambaPrinting(lines), "\n")
+	if !strings.Contains(got, "server string = keep") || !strings.Contains(got, "[Media]") {
+		t.Fatalf("unclosed marker discarded config: %q", got)
 	}
 }
 

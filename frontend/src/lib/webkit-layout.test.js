@@ -98,7 +98,15 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.doesNotMatch(app, />Reload firewall<\/button>/);
   assert.doesNotMatch(app, />Reload status<\/button>/);
   assert.match(app, /Loading \{firewallSelectedBackend\} status/);
-  assert.match(app, /ChangeSambaShare\(configOperation/);
+  assert.match(app, /ChangeSambaShare\(\{ operation: configOperation/);
+  assert.match(app, /browseable: configBrowseable/);
+  assert.match(app, /validUsers: sambaAccessList\(configValidUsers, configValidGroups\)/);
+  assert.match(app, /directoryMask: configDirectoryMask/);
+  assert.match(app, /aria-label="Samba runit services"/);
+  assert.match(app, /ChangeSambaGlobal\(\{ protocol: sambaGlobalProtocol/);
+  assert.match(app, />Global configuration<\/button>/);
+  assert.match(app, /744 – rwx r-- r--/);
+  assert.match(app, /Allow Samba through the firewall/);
   assert.match(app, /ChangeNFSMount\(configOperation/);
   assert.match(app, /confirmSambaRemoval\(share\)/);
   assert.match(app, /confirmNFSAction\(mount\.mounted \? 'unmount' : 'mount', mount\)/);

@@ -45,6 +45,8 @@ func (m *Manager) Change(request security.SystemConfigRequest) error {
 		return m.changeMirror(defaultMirror)
 	case security.SambaAdd, security.SambaEdit, security.SambaRemove:
 		return m.changeSamba(request)
+	case security.SambaGlobalSet:
+		return m.changeSambaGlobal(request)
 	case security.NFSAdd, security.NFSEdit, security.NFSRemove:
 		return m.changeNFS(request)
 	case security.NFSMount:
@@ -189,7 +191,11 @@ func (m *Manager) changeSamba(request security.SystemConfigRequest) error {
 	}
 	block := ""
 	if request.Operation != security.SambaRemove {
-		block = fmt.Sprintf("[%s]\npath = %s\nread only = %s\nguest ok = %s\n", request.Value, request.Path, yesNo(request.ReadOnly), yesNo(request.GuestOK))
+		var preserved []string
+		if start >= 0 {
+			preserved = unknownSambaOptions(strings.Split(string(contents), "\n")[start+1 : end])
+		}
+		block = sambaBlock(request, preserved)
 	}
 	updated := string(contents)
 	if request.Operation == security.SambaAdd {
@@ -199,10 +205,87 @@ func (m *Manager) changeSamba(request security.SystemConfigRequest) error {
 		lines = append(lines[:start], append(strings.Split(strings.TrimSuffix(block, "\n"), "\n"), lines[end:]...)...)
 		updated = strings.Trim(strings.Join(lines, "\n"), "\n") + "\n"
 	}
-	if err := m.validateSamba([]byte(updated)); err != nil {
+	return m.saveSamba(contents, []byte(updated))
+}
+
+func (m *Manager) changeSambaGlobal(request security.SystemConfigRequest) error {
+	contents, err := readRegular(m.sambaConfig)
+	if err != nil {
 		return err
 	}
-	if err := writeWithBackup(m.sambaConfig, []byte(updated)); err != nil {
+	lines := removeManagedSambaPrinting(strings.Split(strings.TrimSuffix(string(contents), "\n"), "\n"))
+	start, end := sambaSection([]byte(strings.Join(lines, "\n")), "global")
+	if start < 0 {
+		lines = append([]string{"[global]"}, lines...)
+		start, end = 0, 1
+	}
+	known := map[string]bool{"server min protocol": true, "client min protocol": true, "create mask": true, "directory mask": true, "map to guest": true}
+	global := []string{lines[start]}
+	for _, line := range lines[start+1 : end] {
+		key, _, ok := strings.Cut(line, "=")
+		if ok && known[strings.ToLower(strings.TrimSpace(key))] {
+			continue
+		}
+		global = append(global, line)
+	}
+	global = append(global,
+		"server min protocol = "+request.Protocol,
+		"client min protocol = "+request.Protocol,
+		"create mask = "+request.DefaultMask,
+		"directory mask = "+request.DefaultMask,
+		"map to guest = "+mapGuestValue(request.MapGuest),
+	)
+	if request.Printing {
+		global = append(global, "# BEGIN SYSENTRA PRINTING", "printing = cups", "printcap name = cups", "load printers = yes", "# END SYSENTRA PRINTING")
+	}
+	lines = append(lines[:start], append(global, lines[end:]...)...)
+	if request.Printing {
+		joined := "\n" + strings.ToLower(strings.Join(lines, "\n")) + "\n"
+		if !strings.Contains(joined, "\n[printers]\n") {
+			lines = append(lines, "", "# BEGIN SYSENTRA PRINTING", "[printers]", "comment = All Printers", "path = /var/spool/samba", "browseable = no", "guest ok = no", "writable = no", "printable = yes", "create mask = 0700", "# END SYSENTRA PRINTING")
+		}
+		if !strings.Contains(joined, "\n[print$]\n") {
+			lines = append(lines, "", "# BEGIN SYSENTRA PRINTING", "[print$]", "comment = Printer Drivers", "path = /var/lib/samba/printers", "browseable = yes", "read only = yes", "guest ok = no", "write list = root", "# END SYSENTRA PRINTING")
+		}
+	}
+	return m.saveSamba(contents, []byte(strings.Trim(strings.Join(lines, "\n"), "\n")+"\n"))
+}
+
+func removeManagedSambaPrinting(lines []string) []string {
+	result := make([]string, 0, len(lines))
+	for index := 0; index < len(lines); index++ {
+		if strings.TrimSpace(lines[index]) != "# BEGIN SYSENTRA PRINTING" {
+			result = append(result, lines[index])
+			continue
+		}
+		end := -1
+		for candidate := index + 1; candidate < len(lines); candidate++ {
+			if strings.TrimSpace(lines[candidate]) == "# END SYSENTRA PRINTING" {
+				end = candidate
+				break
+			}
+		}
+		if end < 0 {
+			result = append(result, lines[index])
+			continue
+		}
+		index = end
+	}
+	return result
+}
+
+func mapGuestValue(enabled bool) string {
+	if enabled {
+		return "Bad User"
+	}
+	return "Never"
+}
+
+func (m *Manager) saveSamba(original, updated []byte) error {
+	if err := m.validateSamba(updated); err != nil {
+		return err
+	}
+	if err := writeWithBackup(m.sambaConfig, updated); err != nil {
 		return err
 	}
 	status, _ := m.runner.Run(context.Background(), "/usr/bin/sv", "status", "/etc/runit/runsvdir/default/smbd")
@@ -210,12 +293,72 @@ func (m *Manager) changeSamba(request security.SystemConfigRequest) error {
 		return nil
 	}
 	if _, err := m.runner.Run(context.Background(), "/usr/bin/smbcontrol", "all", "reload-config"); err != nil {
-		if rollbackErr := atomicWrite(m.sambaConfig, contents); rollbackErr != nil {
+		if rollbackErr := atomicWrite(m.sambaConfig, original); rollbackErr != nil {
 			return fmt.Errorf("reload Samba configuration: %w; rollback failed: %v", err, rollbackErr)
 		}
 		return fmt.Errorf("reload Samba configuration: %w", err)
 	}
 	return nil
+}
+
+func sambaBlock(request security.SystemConfigRequest, preserved []string) string {
+	createMask, directoryMask := request.CreateMask, request.DirectoryMask
+	if createMask == "" {
+		createMask = "0744"
+	}
+	if directoryMask == "" {
+		directoryMask = "0755"
+	}
+	lines := []string{
+		"[" + request.Value + "]",
+		"path = " + request.Path,
+	}
+	optional := [][2]string{
+		{"comment", request.Comment},
+		{"valid users", request.ValidUsers},
+		{"write list", request.WriteList},
+		{"read list", request.ReadList},
+		{"force user", request.ForceUser},
+		{"force group", request.ForceGroup},
+	}
+	for _, option := range optional {
+		if option[1] != "" {
+			lines = append(lines, option[0]+" = "+option[1])
+		}
+	}
+	lines = append(lines,
+		"browseable = "+yesNo(request.Browseable),
+		"read only = "+yesNo(request.ReadOnly),
+		"guest ok = "+yesNo(request.GuestOK),
+		"follow symlinks = "+yesNo(request.FollowSymlinks),
+		"wide links = "+yesNo(request.WideLinks),
+		"create mask = "+createMask,
+		"directory mask = "+directoryMask,
+	)
+	lines = append(lines, preserved...)
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func unknownSambaOptions(lines []string) []string {
+	known := map[string]bool{
+		"path": true, "comment": true, "browseable": true, "browsable": true,
+		"read only": true, "readonly": true, "writeable": true, "writable": true,
+		"guest ok": true, "public": true, "follow symlinks": true, "wide links": true,
+		"valid users": true, "write list": true, "read list": true, "force user": true,
+		"force group": true, "create mask": true, "create mode": true,
+		"directory mask": true, "directory mode": true,
+	}
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		key, _, ok := strings.Cut(line, "=")
+		if ok && known[strings.ToLower(strings.TrimSpace(key))] {
+			continue
+		}
+		if strings.TrimSpace(line) != "" {
+			result = append(result, line)
+		}
+	}
+	return result
 }
 
 func sambaSection(contents []byte, name string) (int, int) {

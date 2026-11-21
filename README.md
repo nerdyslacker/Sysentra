@@ -12,7 +12,7 @@
 
 </div>
 
-Sysentra is a system management center for Void Linux and derivatives.
+Sysentra is a software and system management center for Void Linux and derivatives.
 
 ## Current features
 

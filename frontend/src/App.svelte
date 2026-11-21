@@ -8,7 +8,7 @@
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
-  import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeFirmware, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
+  import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeFirmware, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaGlobal, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
   import PackageDetailsSidebar from './components/PackageDetailsSidebar.svelte';
@@ -19,6 +19,7 @@
   const navigation = ['Discover', 'Installed', 'Updates', 'Repositories', 'XBPS Config', 'Mirrors', 'Services', 'Users & Groups', 'Firewall', 'Samba Server', 'NFS Client', 'Kernels', 'Firmware', 'Drivers'];
   const driverCategories = ['All', 'Video', 'Wi-Fi', 'Ethernet', 'Bluetooth', 'Audio', 'Webcam', 'Touchscreen', 'Printers', 'Scanners', 'Other'];
   const themes = [['default', 'Default'], ['catppuccin', 'Catppuccin'], ['everforest', 'Everforest'], ['github', 'GitHub'], ['gruvbox', 'Gruvbox'], ['one-dark', 'One Dark'], ['dracula', 'Dracula'], ['sepia', 'Sepia'], ['nord', 'Nord'], ['material', 'Material']];
+  const sambaPermissions = [['0744', '744 – rwx r-- r--'], ['0755', '755 – rwx r-x r-x'], ['0770', '770 – rwx rwx ---'], ['0775', '775 – rwx rwx r-x'], ['0777', '777 – rwx rwx rwx']];
 
   let activeView = 'Discover';
   let packages: PackageView[] = [];
@@ -161,8 +162,30 @@
   let configOptions = 'rw,_netdev';
   let configReadOnly = true;
   let configGuestOK = false;
+  let configComment = '';
+  let configBrowseable = true;
+  let configFollowSymlinks = true;
+  let configWideLinks = false;
+  let configValidUsers = '';
+  let configWriteList = '';
+  let configReadList = '';
+  let configValidGroups: string[] = [];
+  let configWriteGroups: string[] = [];
+  let configReadGroups: string[] = [];
+  let configForceUser = '';
+  let configForceGroup = '';
+  let configCreateMask = '0744';
+  let configDirectoryMask = '0755';
   let configSaving = false;
   let configError = '';
+  let sambaGlobalDialog: HTMLDialogElement;
+  let sambaGlobalProtocol = 'SMB2';
+  let sambaGlobalMask = '0755';
+  let sambaGlobalPrinting = false;
+  let sambaGlobalMapGuest = false;
+  let sambaGlobalFirewallAllowed = false;
+  let sambaGlobalSaving = false;
+  let sambaGlobalError = '';
   let configTrustConfirmed = false;
   let configRepositoryKey: RepositoryKeyView | null = null;
   let configKeyURL = '';
@@ -199,7 +222,7 @@
   $: filteredFirmwareDevices = firmwareDevices.filter((item) => [item.name, item.vendor, item.summary, item.version, item.newVersion, item.id].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredFirewallRules = (firewall?.rules ?? []).filter((item) => [item.target, item.action, item.source].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredDriverDevices = driverDevices.filter((item) => (driverCategory === 'All' || item.category === driverCategory) && [item.category, item.bus, item.id, item.name, item.driver, item.status, item.evidence].some((value) => value.toLowerCase().includes(normalizedQuery)));
-  $: filteredSambaShares = (sambaServer?.shares ?? []).filter((item) => [item.name, item.path, item.readOnly ? 'read only' : 'writable', item.guestOK ? 'guest' : 'authenticated'].some((value) => value.toLowerCase().includes(normalizedQuery)));
+  $: filteredSambaShares = (sambaServer?.shares ?? []).filter((item) => [item.name, item.path, item.comment, item.validUsers, item.writeList, item.readList, item.readOnly ? 'read only' : 'writable', item.guestOK ? 'guest' : 'authenticated'].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredNFSMounts = nfsMounts.filter((item) => [item.source, item.target, item.type, item.options, item.mounted ? 'mounted' : 'unmounted'].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredUsers = users.filter((item) => [item.name, item.home, item.shell, String(item.uid), ...item.groups].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredGroups = groups.filter((item) => [item.name, String(item.gid), ...item.members].some((value) => value.toLowerCase().includes(normalizedQuery)));
@@ -921,7 +944,48 @@
     openConfirmation(`${action} repository`, `${action} ${repository.url}. Disabling will comment its repository entry; enabling will restore it.`, false, '', async () => { repositories = await ChangeRepository(action.toLowerCase(), repository.url, '', false); });
   }
 
-  function openConfigDialog(kind: 'repository' | 'flatpak' | 'samba' | 'nfs', operation = 'add', item: RepositoryView | FlatpakRemoteView | SambaShareView | NFSMountView | null = null) {
+  function sambaPrincipals(value: string, groupsOnly: boolean) {
+    return value.split(',').map((part) => part.trim()).filter((part) => part && (groupsOnly ? part.startsWith('@') : !part.startsWith('@'))).map((part) => groupsOnly ? part.slice(1) : part).join(', ');
+  }
+
+  function sambaAccessList(usersList: string, selectedGroups: string[]) {
+    return [...usersList.split(',').map((part) => part.trim()).filter(Boolean), ...selectedGroups.map((group) => `@${group}`)].join(', ');
+  }
+
+  function toggleSambaGroup(target: 'valid' | 'write' | 'read', group: string) {
+    const current = target === 'valid' ? configValidGroups : target === 'write' ? configWriteGroups : configReadGroups;
+    const updated = current.includes(group) ? current.filter((item) => item !== group) : [...current, group];
+    if (target === 'valid') configValidGroups = updated;
+    if (target === 'write') configWriteGroups = updated;
+    if (target === 'read') configReadGroups = updated;
+  }
+
+  function openSambaGlobalDialog() {
+    const global = sambaServer?.global;
+    sambaGlobalProtocol = global?.protocol || 'SMB2';
+    sambaGlobalMask = global?.defaultMask || '0755';
+    sambaGlobalPrinting = global?.printing ?? false;
+    sambaGlobalMapGuest = global?.mapGuest ?? false;
+    sambaGlobalFirewallAllowed = global?.firewallAllowed ?? false;
+    sambaGlobalError = '';
+    sambaGlobalDialog.showModal();
+  }
+
+  async function saveSambaGlobal() {
+    if (sambaGlobalSaving) return;
+    sambaGlobalSaving = true;
+    sambaGlobalError = '';
+    try {
+      sambaServer = await ChangeSambaGlobal({ protocol: sambaGlobalProtocol, defaultMask: sambaGlobalMask, printing: sambaGlobalPrinting, mapGuest: sambaGlobalMapGuest, firewallAllowed: sambaGlobalFirewallAllowed });
+      sambaGlobalDialog.close();
+    } catch (error) {
+      sambaGlobalError = error instanceof Error ? error.message : String(error);
+    } finally {
+      sambaGlobalSaving = false;
+    }
+  }
+
+  async function openConfigDialog(kind: 'repository' | 'flatpak' | 'samba' | 'nfs', operation = 'add', item: RepositoryView | FlatpakRemoteView | SambaShareView | NFSMountView | null = null) {
     configKind = kind;
     configOperation = operation;
     configValue = kind === 'samba' && item ? (item as SambaShareView).name : kind === 'nfs' && item ? (item as NFSMountView).source : (item as RepositoryView | FlatpakRemoteView | null)?.url ?? '';
@@ -933,12 +997,36 @@
     configOptions = kind === 'nfs' && item ? (item as NFSMountView).options : 'rw,_netdev';
     configReadOnly = kind === 'samba' && item ? (item as SambaShareView).readOnly : true;
     configGuestOK = kind === 'samba' && item ? (item as SambaShareView).guestOK : false;
+    const share = kind === 'samba' && item ? item as SambaShareView : null;
+    configComment = share?.comment ?? '';
+    configBrowseable = share?.browseable ?? true;
+    configFollowSymlinks = share?.followSymlinks ?? true;
+    configWideLinks = share?.wideLinks ?? false;
+    configValidUsers = sambaPrincipals(share?.validUsers ?? '', false);
+    configWriteList = sambaPrincipals(share?.writeList ?? '', false);
+    configReadList = sambaPrincipals(share?.readList ?? '', false);
+    configValidGroups = sambaPrincipals(share?.validUsers ?? '', true).split(',').map((group) => group.trim()).filter(Boolean);
+    configWriteGroups = sambaPrincipals(share?.writeList ?? '', true).split(',').map((group) => group.trim()).filter(Boolean);
+    configReadGroups = sambaPrincipals(share?.readList ?? '', true).split(',').map((group) => group.trim()).filter(Boolean);
+    configForceUser = share?.forceUser ?? '';
+    configForceGroup = share?.forceGroup ?? '';
+    configCreateMask = share?.createMask || '0744';
+    configDirectoryMask = share?.directoryMask || '0755';
     configError = '';
     configTrustConfirmed = false;
     configRepositoryKey = null;
     configKeyURL = '';
     configKeyLoading = false;
     configDialog.showModal();
+    if (kind === 'samba' && groups.length === 0) {
+      try {
+        const result = await ListAccounts();
+        users = result.users;
+        groups = result.groups;
+      } catch (error) {
+        configError = `Could not load local users and groups: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
   }
 
   async function saveConfig() {
@@ -948,7 +1036,7 @@
     try {
       if (configKind === 'repository') repositories = await ChangeRepository(configOperation, configValue.trim(), configOldValue, configTrustConfirmed);
       if (configKind === 'flatpak') flatpakRemotes = await ChangeFlatpakRemote(configOperation, configName.trim(), configValue.trim());
-      if (configKind === 'samba') sambaServer = await ChangeSambaShare(configOperation, configValue.trim(), configOldValue, configPath.trim(), configReadOnly, configGuestOK);
+      if (configKind === 'samba') sambaServer = await ChangeSambaShare({ operation: configOperation, name: configValue.trim(), oldName: configOldValue, path: configPath.trim(), comment: configComment.trim(), browseable: configBrowseable, readOnly: configReadOnly, guestOK: configGuestOK, followSymlinks: configFollowSymlinks, wideLinks: configWideLinks, validUsers: sambaAccessList(configValidUsers, configValidGroups), writeList: sambaAccessList(configWriteList, configWriteGroups), readList: sambaAccessList(configReadList, configReadGroups), forceUser: configForceUser.trim(), forceGroup: configForceGroup.trim(), createMask: configCreateMask, directoryMask: configDirectoryMask });
       if (configKind === 'nfs') nfsMounts = await ChangeNFSMount(configOperation, configValue.trim(), configOldValue, configPath.trim(), configOldPath, configType, configOptions.trim());
       configDialog.close();
     } catch (error) {
@@ -960,7 +1048,7 @@
 
   function confirmSambaRemoval(share: SambaShareView) {
     openConfirmation('Remove Samba share', `Remove ${share.name} from Samba configuration without deleting shared files.`, true, '', async () => {
-      sambaServer = await ChangeSambaShare('remove', share.name, '', '', share.readOnly, share.guestOK);
+      sambaServer = await ChangeSambaShare({ operation: 'remove', name: share.name, oldName: '', path: '', comment: '', browseable: false, readOnly: false, guestOK: false, followSymlinks: false, wideLinks: false, validUsers: '', writeList: '', readList: '', forceUser: '', forceGroup: '', createMask: '', directoryMask: '' });
     });
   }
 
@@ -1402,7 +1490,8 @@
         </section>
       {:else if activeView === 'Samba Server'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="samba-heading">
-          <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="samba-heading" class="font-semibold">Samba server</h2><p class="text-xs text-surface-500">Shares configured in /etc/samba/smb.conf.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openConfigDialog('samba')}>Add share</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
+          <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="samba-heading" class="font-semibold">Samba server</h2><p class="text-xs text-surface-500">Shares configured in /etc/samba/smb.conf.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-tonal" on:click={openSambaGlobalDialog} disabled={!sambaServer?.configured}>Global configuration</button><button type="button" class="btn preset-filled-primary-500" on:click={() => openConfigDialog('samba')}>Add share</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
+          <div class="flex gap-4 border-b border-surface-300-700 px-3 py-2 text-sm" aria-label="Samba runit services">{#each ['smbd', 'nmbd'] as name}{@const service = sambaServer?.services.find((item) => item.name === name)}<div class="flex items-center gap-2"><span class="font-mono font-medium">{name}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {service?.status === 'Running' ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-surface-400/50 bg-surface-200-800 text-surface-700-300'}">{service?.status ?? 'Not installed'}</span><span class="text-xs text-surface-500">{service ? service.enabled ? 'Enabled' : 'Disabled' : 'Unavailable'}</span></div>{/each}</div>
           {#if !sambaServer?.configured}<p class="system-table-body p-5 text-sm text-surface-500" role="status">Samba server configuration was not found.</p>{:else}<div class="system-table-body"><div class="samba-grid package-table-header sticky top-0 z-10 grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Share</span><span>Path</span><span>Access</span><span>Guest</span><span>Actions</span></div>{#each filteredSambaShares as share}<div class="samba-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-medium">{share.name}</span><span class="truncate font-mono text-xs">{share.path || '—'}</span><span>{share.readOnly ? 'Read only' : 'Writable'}</span><span>{share.guestOK ? 'Allowed' : 'Disabled'}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" on:click={() => openConfigDialog('samba', 'edit', share)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" on:click={() => confirmSambaRemoval(share)}>Remove</button></span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching Samba shares.</p>{/each}</div>{/if}
         </section>
       {:else if activeView === 'NFS Client'}
@@ -1656,14 +1745,38 @@
     <div class="max-h-[28rem] overflow-auto"><div class="grid grid-cols-[11rem_1fr_1fr] border-b border-surface-300-700 bg-surface-50-900 px-4 py-2 text-xs font-semibold"><span>Time</span><span>Action</span><span>Target</span></div>{#each accountHistory as item}<div class="grid grid-cols-[11rem_1fr_1fr] border-b border-surface-200-800 px-4 py-2 text-sm"><span class="font-mono text-xs">{new Date(item.time).toLocaleString()}</span><span>{item.operation}</span><span>{item.target}</span></div>{:else}<p class="p-5 text-sm text-surface-500">No account changes recorded.</p>{/each}</div>
   </dialog>
 
-  <dialog bind:this={configDialog} class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="config-title">
+  <dialog bind:this={sambaGlobalDialog} class="m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="samba-global-title">
+    <form on:submit|preventDefault={saveSambaGlobal}>
+      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="samba-global-title" class="font-semibold">Global Samba configuration</h2></header>
+      <div class="space-y-4 p-4">
+        <label class="block text-sm"><span class="mb-1 block font-medium">Samba config path</span><input class="input app-input-surface w-full font-mono" value={sambaServer?.global.configPath ?? '/etc/samba/smb.conf'} readonly /></label>
+        <label class="block text-sm"><span class="mb-1 block font-medium">Minimum SMB protocol</span><select class="select app-input-surface w-full" bind:value={sambaGlobalProtocol}><option value="SMB2">SMB2 (recommended)</option><option value="SMB3">SMB3</option></select></label>
+        <label class="block text-sm"><span class="mb-1 block font-medium">Default permissions</span><select class="select app-input-surface w-full" bind:value={sambaGlobalMask}>{#each sambaPermissions as permission}<option value={permission[0]}>{permission[1]}</option>{/each}</select></label>
+        <label class="flex items-start gap-3 text-sm"><input class="mt-1" type="checkbox" role="switch" bind:checked={sambaGlobalPrinting} /><span><strong class="block">Samba printing (CUPS)</strong><span class="text-xs text-surface-500">Adds managed CUPS settings and missing printer shares.</span></span></label>
+        <label class="flex items-start gap-3 text-sm"><input class="mt-1" type="checkbox" role="switch" bind:checked={sambaGlobalMapGuest} /><span><strong class="block">Map unknown users to guest</strong><span class="text-xs text-surface-500">Uses <span class="font-mono">map to guest = Bad User</span>; otherwise uses <span class="font-mono">Never</span>.</span></span></label>
+        <div class="flex items-start gap-3 text-sm"><input class="mt-1" type="checkbox" role="switch" checked={sambaServer?.global.firewallActive ?? false} disabled /><span><strong class="block">System firewall</strong><span class="text-xs text-surface-500">{sambaServer?.global.firewallBackend ? `${sambaServer.global.firewallBackend} is ${sambaServer.global.firewallActive ? 'active' : 'inactive'}.` : 'No supported firewall detected.'}</span></span></div>
+        <label class="flex items-start gap-3 text-sm"><input class="mt-1" type="checkbox" role="switch" bind:checked={sambaGlobalFirewallAllowed} disabled={!sambaServer?.global.firewallActive} /><span><strong class="block">Allow Samba through the firewall</strong><span class="text-xs text-surface-500">{sambaServer?.global.firewallActive ? 'Manages the Samba service or ports 137–139 and 445 in the active backend.' : 'Enable and select a firewall backend in the Firewall section first.'}</span></span></label>
+        {#if sambaGlobalError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{sambaGlobalError}</p>{/if}
+      </div>
+      <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={sambaGlobalSaving} on:click={() => sambaGlobalDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={sambaGlobalSaving}>{sambaGlobalSaving ? 'Saving…' : 'Save'}</button></footer>
+    </form>
+  </dialog>
+
+  <dialog bind:this={configDialog} class="m-auto w-[min(46rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="config-title">
     <form on:submit|preventDefault={saveConfig}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="config-title" class="font-semibold">{configOperation === 'edit' ? `Edit ${configKind === 'flatpak' ? 'Flatpak remote' : configKind === 'samba' ? 'Samba share' : configKind === 'nfs' ? 'NFS mount' : 'repository'}` : configKind === 'repository' ? 'Add repository' : configKind === 'flatpak' ? 'Add Flatpak remote' : configKind === 'samba' ? 'Add Samba share' : 'Add NFS mount'}</h2></header>
-      <div class="space-y-3 p-4">
+      <div class="max-h-[calc(100vh-10rem)] space-y-3 overflow-y-auto p-4">
         {#if configKind === 'flatpak'}<label class="block text-sm"><span class="mb-1 block font-medium">Remote name</span><input class="input app-input-surface w-full" bind:value={configName} placeholder="flathub" disabled={configOperation === 'edit'} required /></label>{/if}
         <label class="block text-sm"><span class="mb-1 block font-medium">{configKind === 'repository' || configKind === 'flatpak' ? 'HTTPS repository URL' : configKind === 'samba' ? 'Share name' : 'NFS source'}</span><input class="input app-input-surface w-full" bind:value={configValue} on:input={() => { configTrustConfirmed = false; configRepositoryKey = null; configKeyURL = ''; }} placeholder={configKind === 'repository' ? 'https://repo.example.org/current' : configKind === 'flatpak' ? 'https://flathub.org/repo/flathub.flatpakrepo' : configKind === 'samba' ? 'Media' : 'server:/data'} required /></label>
         {#if configKind === 'samba' || configKind === 'nfs'}<label class="block text-sm"><span class="mb-1 block font-medium">{configKind === 'samba' ? 'Local directory' : 'Mount point'}</span><input class="input app-input-surface w-full font-mono" bind:value={configPath} placeholder={configKind === 'samba' ? '/srv/media' : '/mnt/data'} required /></label>{/if}
-        {#if configKind === 'samba'}<div class="flex flex-wrap gap-4 text-sm"><label class="flex items-center gap-2"><input type="checkbox" bind:checked={configReadOnly} /> Read only</label><label class="flex items-center gap-2"><input type="checkbox" bind:checked={configGuestOK} /> Allow guests</label></div>{/if}
+        {#if configKind === 'samba'}
+          <label class="block text-sm"><span class="mb-1 block font-medium">Comment</span><input class="input app-input-surface w-full" bind:value={configComment} maxlength="256" placeholder="Shared media" /></label>
+          <fieldset class="grid grid-cols-2 gap-2 rounded-base border border-surface-300-700 p-3 text-sm sm:grid-cols-3"><legend class="px-1 font-medium">Access behavior</legend><label class="flex items-center gap-2"><input type="checkbox" bind:checked={configBrowseable} /> Browseable</label><label class="flex items-center gap-2"><input type="checkbox" bind:checked={configReadOnly} /> Read only</label><label class="flex items-center gap-2"><input type="checkbox" bind:checked={configGuestOK} /> Allow guests</label><label class="flex items-center gap-2"><input type="checkbox" bind:checked={configFollowSymlinks} /> Follow symlinks</label><label class="flex items-center gap-2"><input type="checkbox" bind:checked={configWideLinks} /> Wide links</label></fieldset>
+          {#if configWideLinks}<p class="rounded-base border border-warning-500/40 bg-warning-500/10 p-2 text-xs text-warning-700-300">Wide links can expose files outside the shared directory. Samba may also require compatible global settings.</p>{/if}
+          <div class="grid gap-3 sm:grid-cols-2"><label class="block text-sm"><span class="mb-1 block font-medium">Valid users</span><input class="input app-input-surface w-full" bind:value={configValidUsers} placeholder="alice, bob" /></label><details class="rounded-base border border-surface-300-700"><summary class="cursor-pointer px-3 py-2 text-sm font-medium">Valid groups ({configValidGroups.length})</summary><div class="max-h-36 overflow-auto border-t border-surface-300-700 p-1">{#each groups as group}<label class="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm"><input type="checkbox" checked={configValidGroups.includes(group.name)} on:change={() => toggleSambaGroup('valid', group.name)} /> {group.name}</label>{:else}<p class="p-2 text-xs text-surface-500">No local groups available.</p>{/each}</div></details><label class="block text-sm"><span class="mb-1 block font-medium">Write list</span><input class="input app-input-surface w-full" bind:value={configWriteList} placeholder="alice" /></label><details class="rounded-base border border-surface-300-700"><summary class="cursor-pointer px-3 py-2 text-sm font-medium">Write groups ({configWriteGroups.length})</summary><div class="max-h-36 overflow-auto border-t border-surface-300-700 p-1">{#each groups as group}<label class="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm"><input type="checkbox" checked={configWriteGroups.includes(group.name)} on:change={() => toggleSambaGroup('write', group.name)} /> {group.name}</label>{/each}</div></details><label class="block text-sm"><span class="mb-1 block font-medium">Read list</span><input class="input app-input-surface w-full" bind:value={configReadList} placeholder="bob" /></label><details class="rounded-base border border-surface-300-700"><summary class="cursor-pointer px-3 py-2 text-sm font-medium">Read groups ({configReadGroups.length})</summary><div class="max-h-36 overflow-auto border-t border-surface-300-700 p-1">{#each groups as group}<label class="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm"><input type="checkbox" checked={configReadGroups.includes(group.name)} on:change={() => toggleSambaGroup('read', group.name)} /> {group.name}</label>{/each}</div></details></div>
+          <div class="grid gap-3 sm:grid-cols-2"><label class="block text-sm"><span class="mb-1 block font-medium">Force user</span><input class="input app-input-surface w-full" list="samba-users" bind:value={configForceUser} /></label><label class="block text-sm"><span class="mb-1 block font-medium">Force group</span><input class="input app-input-surface w-full" list="samba-groups" bind:value={configForceGroup} /></label><label class="block text-sm"><span class="mb-1 block font-medium">Create mask</span><select class="select app-input-surface w-full" bind:value={configCreateMask}>{#each sambaPermissions as permission}<option value={permission[0]}>{permission[1]}</option>{/each}</select></label><label class="block text-sm"><span class="mb-1 block font-medium">Directory mask</span><select class="select app-input-surface w-full" bind:value={configDirectoryMask}>{#each sambaPermissions as permission}<option value={permission[0]}>{permission[1]}</option>{/each}</select></label></div>
+          <datalist id="samba-users">{#each users as user}<option value={user.name}></option>{/each}</datalist><datalist id="samba-groups">{#each groups as group}<option value={group.name}></option>{/each}</datalist>
+        {/if}
         {#if configKind === 'nfs'}<div class="grid grid-cols-[7rem_1fr] gap-3"><label class="block text-sm"><span class="mb-1 block font-medium">Type</span><select class="select app-input-surface w-full" bind:value={configType}><option value="nfs4">NFS 4</option><option value="nfs">NFS</option></select></label><label class="block text-sm"><span class="mb-1 block font-medium">Options</span><input class="input app-input-surface w-full font-mono" bind:value={configOptions} /></label></div>{/if}
         {#if configKind === 'repository'}<div class="space-y-2"><button type="button" class="btn preset-tonal" disabled={configKeyLoading || !configValue.trim()} on:click={inspectRepositoryKey}>{configKeyLoading ? 'Inspecting…' : 'Inspect signing key'}</button>{#if configRepositoryKey && configKeyURL === configValue.trim()}<dl class="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-base border border-surface-300-700 bg-surface-50-900 p-3 text-xs"><dt class="text-surface-500">Signer</dt><dd>{configRepositoryKey.signer}</dd><dt class="text-surface-500">Key</dt><dd>{configRepositoryKey.type.toUpperCase()} {configRepositoryKey.bits}-bit</dd><dt class="text-surface-500">Signing key fingerprint</dt><dd class="break-all font-mono">{configRepositoryKey.fingerprint}</dd></dl>{/if}<label class="flex items-start gap-2 text-sm"><input class="mt-0.5" type="checkbox" bind:checked={configTrustConfirmed} disabled={!configRepositoryKey || configKeyURL !== configValue.trim()} /><span>I verified this signing identity and trust packages from this repository.</span></label></div>{/if}
         {#if configKind === 'repository'}<p class="text-xs text-surface-500">Sysentra needs administrator authorization to update this configuration.</p>{/if}

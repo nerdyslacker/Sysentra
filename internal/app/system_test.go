@@ -32,6 +32,7 @@ type systemServiceClientStub struct {
 	serviceRequest  security.ServiceRequest
 	firewallRequest security.FirewallRequest
 	commits         int
+	listedServices  []services.Service
 }
 
 func (s *systemServiceClientStub) AccountStatus(context.Context) ([]accounts.Status, error) {
@@ -39,7 +40,7 @@ func (s *systemServiceClientStub) AccountStatus(context.Context) ([]accounts.Sta
 }
 
 func (s *systemServiceClientStub) ListServices(context.Context) ([]services.Service, error) {
-	return nil, nil
+	return s.listedServices, nil
 }
 func (s *systemServiceClientStub) ServiceDetails(context.Context, string) (services.Details, error) {
 	return services.Details{}, nil
@@ -125,19 +126,52 @@ func TestFirewallUsesExplicitBackendAndTypedChange(t *testing.T) {
 }
 
 func TestShareChangesPreserveOldIdentifiers(t *testing.T) {
-	client := &systemServiceClientStub{}
+	client := &systemServiceClientStub{listedServices: []services.Service{{Name: "smbd", Enabled: true, State: "Running", PID: 123}, {Name: "nmbd", State: "Stopped"}, {Name: "sshd", Enabled: true, State: "Running"}}}
 	service := NewSystemService(nil, nil, nil, nil, nil, nil, nil, nil, client, nil, nil, nil, nil, sharesReaderStub{}, nil)
-	if _, err := service.ChangeSambaShare("edit", "Videos", "Media", "/srv/videos", false, true); err != nil {
+	input := SambaShareInput{Operation: "edit", Name: "Videos", OldName: "Media", Path: "/srv/videos", Comment: "Videos", Browseable: true, GuestOK: true, FollowSymlinks: true, ValidUsers: "alice, @media", WriteList: "@editors", ReadList: "bob", ForceUser: "media", ForceGroup: "media", CreateMask: "0770", DirectoryMask: "0775"}
+	view, err := service.ChangeSambaShare(input)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if client.systemRequest.Operation != security.SambaEdit || client.systemRequest.OldValue != "Media" {
+	if client.systemRequest.Operation != security.SambaEdit || client.systemRequest.OldValue != "Media" || client.systemRequest.Comment != "Videos" || client.systemRequest.WriteList != "@editors" {
 		t.Fatalf("request=%#v", client.systemRequest)
+	}
+	if len(view.Services) != 2 || view.Services[0].Name != "smbd" || view.Services[1].Name != "nmbd" {
+		t.Fatalf("services=%#v", view.Services)
 	}
 	if _, err := service.ChangeNFSMount("edit", "server:/new", "server:/old", "/mnt/new", "/mnt/old", "nfs4", "rw,_netdev"); err != nil {
 		t.Fatal(err)
 	}
 	if client.systemRequest.Operation != security.NFSEdit || client.systemRequest.OldPath != "/mnt/old" {
 		t.Fatalf("request=%#v", client.systemRequest)
+	}
+}
+
+func TestSambaGlobalConfigurationUsesTypedConfigAndActiveFirewall(t *testing.T) {
+	client := &systemServiceClientStub{}
+	inventory := firewallReaderStub{state: firewall.State{Backend: "firewalld", Installed: true, Active: true, Zone: "public"}}
+	service := NewSystemService(nil, nil, nil, nil, nil, nil, inventory, nil, client, nil, nil, nil, nil, sharesReaderStub{}, nil)
+	_, err := service.ChangeSambaGlobal(SambaGlobalInput{Protocol: "SMB3", DefaultMask: "0775", Printing: true, MapGuest: true, FirewallAllowed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.systemRequest.Operation != security.SambaGlobalSet || client.systemRequest.Protocol != "SMB3" || !client.systemRequest.Printing || client.firewallRequest.Operation != security.FirewallRuleAdd || client.firewallRequest.Rule.Target != "samba" || client.firewallRequest.Zone != "public" {
+		t.Fatalf("system=%#v firewall=%#v", client.systemRequest, client.firewallRequest)
+	}
+}
+
+func TestSambaFirewallDistinguishesPartialAndCompleteUFWAccess(t *testing.T) {
+	state := firewall.State{Backend: "ufw", Rules: []firewall.Rule{{Kind: "port", Target: "445", Protocol: "tcp", Action: "allow"}}}
+	if sambaFirewallAllowed(state) || !sambaFirewallConfigured(state) {
+		t.Fatalf("partial Samba access was classified incorrectly: %#v", state)
+	}
+	state.Rules = append(state.Rules,
+		firewall.Rule{Kind: "port", Target: "137", Protocol: "udp", Action: "allow"},
+		firewall.Rule{Kind: "port", Target: "138", Protocol: "udp", Action: "allow"},
+		firewall.Rule{Kind: "port", Target: "139", Protocol: "tcp", Action: "allow"},
+	)
+	if !sambaFirewallAllowed(state) {
+		t.Fatalf("complete Samba access was not detected: %#v", state)
 	}
 }
 

@@ -22,6 +22,72 @@ func TestReadSambaShares(t *testing.T) {
 	}
 }
 
+func TestReadSambaSharesIncludesAccessAndCreationOptions(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "smb.conf")
+	contents := `[global]
+workgroup = WORKGROUP
+[Media]
+ path = /srv/media
+ comment = Shared media
+ browsable = no
+ read only = yes
+ guest ok = no
+ follow symlinks = yes
+ wide links = no
+ valid users = alice, @media
+ write list = alice, @editors
+ read list = bob, @viewers
+ force user = media
+ force group = media
+ create mask = 0770
+ directory mask = 0775
+`
+	if err := os.WriteFile(config, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	server, err := readSamba(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(server.Shares) != 1 {
+		t.Fatalf("shares = %#v", server.Shares)
+	}
+	share := server.Shares[0]
+	if share.Comment != "Shared media" || share.Browseable || !share.FollowSymlinks || share.WideLinks || share.ValidUsers != "alice, @media" || share.WriteList != "alice, @editors" || share.ReadList != "bob, @viewers" || share.ForceUser != "media" || share.ForceGroup != "media" || share.CreateMask != "0770" || share.DirectoryMask != "0775" {
+		t.Fatalf("share = %#v", share)
+	}
+}
+
+func TestReadSambaGlobalConfiguration(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "smb.conf")
+	contents := `[global]
+server min protocol = SMB2
+client min protocol = SMB2
+create mask = 0775
+directory mask = 0775
+map to guest = Bad User
+printing = cups
+load printers = yes
+
+[printers]
+path = /var/spool/samba
+printable = yes
+`
+	if err := os.WriteFile(config, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server, err := readSamba(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if server.Global.Protocol != "SMB2" || server.Global.DefaultMask != "0775" || !server.Global.MapGuest || !server.Global.Printing {
+		t.Fatalf("global = %#v", server.Global)
+	}
+}
+
 func TestReadNFSClientMergesConfiguredAndMountedShares(t *testing.T) {
 	root := t.TempDir()
 	fstab := filepath.Join(root, "fstab")

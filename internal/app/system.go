@@ -100,14 +100,63 @@ type ServiceDetailsView struct {
 }
 
 type SambaShareView struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	ReadOnly bool   `json:"readOnly"`
-	GuestOK  bool   `json:"guestOK"`
+	Name           string `json:"name"`
+	Path           string `json:"path"`
+	Comment        string `json:"comment"`
+	ValidUsers     string `json:"validUsers"`
+	WriteList      string `json:"writeList"`
+	ReadList       string `json:"readList"`
+	ForceUser      string `json:"forceUser"`
+	ForceGroup     string `json:"forceGroup"`
+	CreateMask     string `json:"createMask"`
+	DirectoryMask  string `json:"directoryMask"`
+	ReadOnly       bool   `json:"readOnly"`
+	GuestOK        bool   `json:"guestOK"`
+	Browseable     bool   `json:"browseable"`
+	FollowSymlinks bool   `json:"followSymlinks"`
+	WideLinks      bool   `json:"wideLinks"`
 }
 type SambaServerView struct {
 	Configured bool             `json:"configured"`
 	Shares     []SambaShareView `json:"shares"`
+	Services   []ServiceView    `json:"services"`
+	Global     SambaGlobalView  `json:"global"`
+}
+type SambaGlobalView struct {
+	ConfigPath      string `json:"configPath"`
+	Protocol        string `json:"protocol"`
+	DefaultMask     string `json:"defaultMask"`
+	Printing        bool   `json:"printing"`
+	MapGuest        bool   `json:"mapGuest"`
+	FirewallBackend string `json:"firewallBackend"`
+	FirewallActive  bool   `json:"firewallActive"`
+	FirewallAllowed bool   `json:"firewallAllowed"`
+}
+type SambaGlobalInput struct {
+	Protocol        string `json:"protocol"`
+	DefaultMask     string `json:"defaultMask"`
+	Printing        bool   `json:"printing"`
+	MapGuest        bool   `json:"mapGuest"`
+	FirewallAllowed bool   `json:"firewallAllowed"`
+}
+type SambaShareInput struct {
+	Operation      string `json:"operation"`
+	Name           string `json:"name"`
+	OldName        string `json:"oldName"`
+	Path           string `json:"path"`
+	Comment        string `json:"comment"`
+	ValidUsers     string `json:"validUsers"`
+	WriteList      string `json:"writeList"`
+	ReadList       string `json:"readList"`
+	ForceUser      string `json:"forceUser"`
+	ForceGroup     string `json:"forceGroup"`
+	CreateMask     string `json:"createMask"`
+	DirectoryMask  string `json:"directoryMask"`
+	ReadOnly       bool   `json:"readOnly"`
+	GuestOK        bool   `json:"guestOK"`
+	Browseable     bool   `json:"browseable"`
+	FollowSymlinks bool   `json:"followSymlinks"`
+	WideLinks      bool   `json:"wideLinks"`
 }
 type NFSMountView struct {
 	Source     string `json:"source"`
@@ -608,11 +657,68 @@ func (s *SystemService) GetSambaServer() (SambaServerView, error) {
 	if err != nil {
 		return SambaServerView{}, err
 	}
-	view := SambaServerView{Configured: server.Configured, Shares: make([]SambaShareView, len(server.Shares))}
+	view := SambaServerView{Configured: server.Configured, Shares: make([]SambaShareView, len(server.Shares)), Global: SambaGlobalView{ConfigPath: "/etc/samba/smb.conf", Protocol: server.Global.Protocol, DefaultMask: server.Global.DefaultMask, Printing: server.Global.Printing, MapGuest: server.Global.MapGuest}}
 	for index, share := range server.Shares {
-		view.Shares[index] = SambaShareView{Name: share.Name, Path: share.Path, ReadOnly: share.ReadOnly, GuestOK: share.GuestOK}
+		view.Shares[index] = SambaShareView{Name: share.Name, Path: share.Path, Comment: share.Comment, ValidUsers: share.ValidUsers, WriteList: share.WriteList, ReadList: share.ReadList, ForceUser: share.ForceUser, ForceGroup: share.ForceGroup, CreateMask: share.CreateMask, DirectoryMask: share.DirectoryMask, ReadOnly: share.ReadOnly, GuestOK: share.GuestOK, Browseable: share.Browseable, FollowSymlinks: share.FollowSymlinks, WideLinks: share.WideLinks}
+	}
+	if s.services != nil {
+		items, err := s.services.ListServices(context.Background())
+		if err != nil {
+			return SambaServerView{}, fmt.Errorf("read Samba runit services: %w", err)
+		}
+		for _, item := range serviceViews(items) {
+			if item.Name == "smbd" || item.Name == "nmbd" {
+				view.Services = append(view.Services, item)
+			}
+		}
+	}
+	if s.firewall != nil {
+		state, err := s.firewall.ReadBackend(context.Background(), "")
+		if err != nil {
+			return SambaServerView{}, fmt.Errorf("read Samba firewall state: %w", err)
+		}
+		view.Global.FirewallBackend = state.Backend
+		view.Global.FirewallActive = state.Active
+		view.Global.FirewallAllowed = sambaFirewallAllowed(state)
 	}
 	return view, nil
+}
+
+func sambaFirewallAllowed(state firewall.State) bool {
+	if state.Backend == "firewalld" {
+		for _, rule := range state.Rules {
+			if rule.Kind == "service" && rule.Target == "samba" && rule.Action == "allow" {
+				return true
+			}
+		}
+		return false
+	}
+	wanted := map[string]bool{"137/udp": false, "138/udp": false, "139/tcp": false, "445/tcp": false}
+	for _, rule := range state.Rules {
+		key := rule.Target + "/" + rule.Protocol
+		if _, ok := wanted[key]; ok && rule.Action == "allow" {
+			wanted[key] = true
+		}
+	}
+	for _, found := range wanted {
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func sambaFirewallConfigured(state firewall.State) bool {
+	if state.Backend == "firewalld" {
+		return sambaFirewallAllowed(state)
+	}
+	for _, rule := range state.Rules {
+		key := rule.Target + "/" + rule.Protocol
+		if (key == "137/udp" || key == "138/udp" || key == "139/tcp" || key == "445/tcp") && rule.Action == "allow" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SystemService) ListNFSClient() ([]NFSMountView, error) {
@@ -807,12 +913,13 @@ func (s *SystemService) ChangeMirror(value string) (MirrorCatalogView, error) {
 	return s.ListMirrors()
 }
 
-func (s *SystemService) AddSambaShare(name, path string, readOnly, guestOK bool) (SambaServerView, error) {
-	return s.ChangeSambaShare("add", name, "", path, readOnly, guestOK)
+func (s *SystemService) AddSambaShare(input SambaShareInput) (SambaServerView, error) {
+	input.Operation = "add"
+	return s.ChangeSambaShare(input)
 }
 
-func (s *SystemService) ChangeSambaShare(operation, name, oldName, path string, readOnly, guestOK bool) (SambaServerView, error) {
-	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SystemConfigOperation("samba-" + operation), Value: name, OldValue: oldName, Path: path, ReadOnly: readOnly, GuestOK: guestOK}
+func (s *SystemService) ChangeSambaShare(input SambaShareInput) (SambaServerView, error) {
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SystemConfigOperation("samba-" + input.Operation), Value: input.Name, OldValue: input.OldName, Path: input.Path, Comment: input.Comment, ValidUsers: input.ValidUsers, WriteList: input.WriteList, ReadList: input.ReadList, ForceUser: input.ForceUser, ForceGroup: input.ForceGroup, CreateMask: input.CreateMask, DirectoryMask: input.DirectoryMask, ReadOnly: input.ReadOnly, GuestOK: input.GuestOK, Browseable: input.Browseable, FollowSymlinks: input.FollowSymlinks, WideLinks: input.WideLinks}
 	if err := request.Validate(); err != nil {
 		return SambaServerView{}, err
 	}
@@ -820,6 +927,75 @@ func (s *SystemService) ChangeSambaShare(operation, name, oldName, path string, 
 		return SambaServerView{}, err
 	}
 	return s.GetSambaServer()
+}
+
+func (s *SystemService) ChangeSambaGlobal(input SambaGlobalInput) (SambaServerView, error) {
+	before, err := s.shares.Samba()
+	if err != nil {
+		return SambaServerView{}, err
+	}
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaGlobalSet, Protocol: input.Protocol, DefaultMask: input.DefaultMask, Printing: input.Printing, MapGuest: input.MapGuest}
+	if err := request.Validate(); err != nil {
+		return SambaServerView{}, err
+	}
+	if err := s.services.ChangeSystemConfig(context.Background(), request); err != nil {
+		return SambaServerView{}, err
+	}
+	if s.firewall != nil {
+		state, err := s.firewall.ReadBackend(context.Background(), "")
+		if err != nil {
+			return SambaServerView{}, err
+		}
+		firewallChangeNeeded := input.FirewallAllowed && !sambaFirewallAllowed(state) || !input.FirewallAllowed && sambaFirewallConfigured(state)
+		if state.Active && firewallChangeNeeded {
+			if err := s.changeSambaFirewall(state, input.FirewallAllowed); err != nil {
+				rollback := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SambaGlobalSet, Protocol: before.Global.Protocol, DefaultMask: before.Global.DefaultMask, Printing: before.Global.Printing, MapGuest: before.Global.MapGuest}
+				_ = s.services.ChangeSystemConfig(context.Background(), rollback)
+				return SambaServerView{}, err
+			}
+		}
+	}
+	return s.GetSambaServer()
+}
+
+func (s *SystemService) changeSambaFirewall(state firewall.State, allow bool) error {
+	operation := security.FirewallRuleAdd
+	rollback := security.FirewallRuleRemove
+	if !allow {
+		operation, rollback = rollback, operation
+	}
+	rules := []security.FirewallRule{{Kind: "service", Target: "samba", Action: "allow"}}
+	if state.Backend == "ufw" {
+		rules = []security.FirewallRule{
+			{Kind: "port", Target: "137", Protocol: "udp", Direction: "in", Source: "any", Action: "allow"},
+			{Kind: "port", Target: "138", Protocol: "udp", Direction: "in", Source: "any", Action: "allow"},
+			{Kind: "port", Target: "139", Protocol: "tcp", Direction: "in", Source: "any", Action: "allow"},
+			{Kind: "port", Target: "445", Protocol: "tcp", Direction: "in", Source: "any", Action: "allow"},
+		}
+	}
+	filtered := rules[:0]
+	for _, rule := range rules {
+		present := false
+		for _, existing := range state.Rules {
+			present = present || existing.Kind == rule.Kind && existing.Target == rule.Target && existing.Protocol == rule.Protocol && existing.Action == "allow"
+		}
+		if present != allow {
+			filtered = append(filtered, rule)
+		}
+	}
+	rules = filtered
+	applied := make([]security.FirewallRule, 0, len(rules))
+	for _, rule := range rules {
+		request := security.FirewallRequest{Version: security.APIVersion, Operation: operation, Backend: state.Backend, Zone: state.Zone, Rule: rule}
+		if err := s.services.ChangeFirewall(context.Background(), request); err != nil {
+			for index := len(applied) - 1; index >= 0; index-- {
+				_ = s.services.ChangeFirewall(context.Background(), security.FirewallRequest{Version: security.APIVersion, Operation: rollback, Backend: state.Backend, Zone: state.Zone, Rule: applied[index]})
+			}
+			return fmt.Errorf("update Samba firewall access: %w", err)
+		}
+		applied = append(applied, rule)
+	}
+	return nil
 }
 
 func (s *SystemService) AddNFSMount(source, target, filesystem, options string) ([]NFSMountView, error) {
