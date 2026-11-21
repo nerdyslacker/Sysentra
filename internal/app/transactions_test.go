@@ -105,7 +105,7 @@ func TestPackageTransactionServicePlansAndCommitsFlatpakOperation(t *testing.T) 
 	if !reflect.DeepEqual(result.Diagnostics, []string{"Installing org.example.App", "Complete."}) {
 		t.Fatalf("diagnostics=%#v", result.Diagnostics)
 	}
-	want := []string{"flatpak", "install", "--user", "--noninteractive", "flathub", "org.example.App"}
+	want := []string{"flatpak", "install", "--user", "--assumeyes", "--noninteractive", "flathub", "org.example.App"}
 	if len(commandRunner.calls) != 1 || !reflect.DeepEqual(commandRunner.calls[0], want) {
 		t.Fatalf("calls=%v want %v", commandRunner.calls, want)
 	}
@@ -121,7 +121,7 @@ func TestPackageTransactionServiceCleansUnusedFlatpaks(t *testing.T) {
 	if _, err := service.CommitPackage(plan.RequestID); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"flatpak", "uninstall", "--user", "--unused", "--noninteractive"}
+	want := []string{"flatpak", "uninstall", "--user", "--unused", "--assumeyes", "--noninteractive"}
 	if len(commandRunner.calls) != 1 || !reflect.DeepEqual(commandRunner.calls[0], want) {
 		t.Fatalf("calls=%v want %v", commandRunner.calls, want)
 	}
@@ -137,7 +137,7 @@ func TestPackageTransactionServicePreservesFlatpakSystemScope(t *testing.T) {
 	if _, err := service.CommitPackage(plan.RequestID); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"flatpak", "update", "--system", "--noninteractive", "org.example.App"}
+	want := []string{"flatpak", "update", "--system", "--assumeyes", "--noninteractive", "org.example.App"}
 	if len(commandRunner.calls) != 1 || !reflect.DeepEqual(commandRunner.calls[0], want) {
 		t.Fatalf("calls=%v want %v", commandRunner.calls, want)
 	}

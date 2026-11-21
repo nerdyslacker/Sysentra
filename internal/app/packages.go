@@ -203,7 +203,9 @@ func (s *PackageService) catalog(kind string) (PackageCatalog, error) {
 		}
 		packages, err := loadPackages(context.Background(), backend, kind)
 		if err != nil {
-			catalog.Warnings = append(catalog.Warnings, fmt.Sprintf("%s is unavailable", backend.ID()))
+			if kind != "updates" {
+				catalog.Warnings = append(catalog.Warnings, fmt.Sprintf("%s is unavailable", backend.ID()))
+			}
 			continue
 		}
 		catalog.Packages = append(catalog.Packages, packageViews(packages)...)

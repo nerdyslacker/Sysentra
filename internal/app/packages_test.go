@@ -137,6 +137,18 @@ func TestPackageServiceReportsOptionalBackendFailure(t *testing.T) {
 	}
 }
 
+func TestPackageServiceDoesNotCallEmptyOptionalUpdatesUnavailable(t *testing.T) {
+	service := NewPackageService(packageReaderStub{}, packageReaderStub{id: "flatpak", err: errors.New("no updates")})
+
+	catalog, err := service.ListUpdates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none", catalog.Warnings)
+	}
+}
+
 func TestPackageServiceDoesNotQueryDisabledOptionalSource(t *testing.T) {
 	service := NewPackageService(packageReaderStub{}, packageReaderStub{id: "flatpak", err: errors.New("must not be queried")})
 	if _, err := service.SetAdditionalSourceEnabled("flatpak", false); err != nil {

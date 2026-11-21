@@ -112,7 +112,7 @@ func (s *PackageTransactionService) PreviewPackages(backendID string, packageIDs
 }
 
 func (s *PackageTransactionService) PreviewFlatpakCleanup() (PackageTransactionPlanView, error) {
-	return s.storeFlatpakPlan("cleanup-unused", []string{"flatpak", "uninstall", "--user", "--unused", "--noninteractive"}, nil)
+	return s.storeFlatpakPlan("cleanup-unused", []string{"flatpak", "uninstall", "--user", "--unused", "--assumeyes", "--noninteractive"}, nil)
 }
 
 func (s *PackageTransactionService) previewFlatpak(packageIDs []string, operation, scope string) (PackageTransactionPlanView, error) {
@@ -129,11 +129,11 @@ func (s *PackageTransactionService) previewFlatpak(packageIDs []string, operatio
 	args := []string{}
 	switch operation {
 	case "install":
-		args = []string{"flatpak", "install", scopeFlag, "--noninteractive", "flathub"}
+		args = []string{"flatpak", "install", scopeFlag, "--assumeyes", "--noninteractive", "flathub"}
 	case "remove":
-		args = []string{"flatpak", "uninstall", scopeFlag, "--noninteractive"}
+		args = []string{"flatpak", "uninstall", scopeFlag, "--assumeyes", "--noninteractive"}
 	case "update":
-		args = []string{"flatpak", "update", scopeFlag, "--noninteractive"}
+		args = []string{"flatpak", "update", scopeFlag, "--assumeyes", "--noninteractive"}
 	default:
 		return PackageTransactionPlanView{}, errors.New("unsupported Flatpak operation")
 	}

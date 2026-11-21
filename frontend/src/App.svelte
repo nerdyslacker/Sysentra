@@ -20,6 +20,8 @@
   const driverCategories = ['All', 'Video', 'Wi-Fi', 'Ethernet', 'Bluetooth', 'Audio', 'Webcam', 'Touchscreen', 'Printers', 'Scanners', 'Other'];
   const themes = [['default', 'Default'], ['catppuccin', 'Catppuccin'], ['everforest', 'Everforest'], ['github', 'GitHub'], ['gruvbox', 'Gruvbox'], ['one-dark', 'One Dark'], ['dracula', 'Dracula'], ['sepia', 'Sepia'], ['nord', 'Nord'], ['material', 'Material']];
   const sambaPermissions = [['0744', '744 – rwx r-- r--'], ['0755', '755 – rwx r-x r-x'], ['0770', '770 – rwx rwx ---'], ['0775', '775 – rwx rwx r-x'], ['0777', '777 – rwx rwx rwx']];
+  type UpgradeSourcePlan = { scope: string; plan: PackageTransactionPlanView };
+  type UpgradeSource = { id: string; name: string; packages: PackageView[]; selected: boolean; plans: UpgradeSourcePlan[]; loading: boolean; error: string; previewVersion: number };
 
   let activeView = 'Discover';
   let packages: PackageView[] = [];
@@ -131,6 +133,7 @@
   let transactionError = '';
   let transactionOutcome: 'success' | 'failure' | '' = '';
   let transactionExecutionLogs: string[] = [];
+  let upgradeSources: UpgradeSource[] = [];
   let transactionLogsVisible = false;
   let transactionSequence = 0;
   let confirmationAction: (() => Promise<void>) | null = null;
@@ -637,19 +640,58 @@
     transactionError = '';
     transactionOutcome = '';
     transactionExecutionLogs = [];
+    upgradeSources = [];
     transactionLogsVisible = false;
     confirmationAction = null;
     transactionLoading = true;
     confirmationDialog.showModal();
     const sequence = ++transactionSequence;
     try {
-      const plan = await PreviewSystemUpgrade();
-      if (sequence === transactionSequence) transactionPlan = plan;
+      const [plan, updates] = await Promise.all([PreviewSystemUpgrade(), flatpakSourceEnabled ? ListUpdates() : Promise.resolve(null)]);
+      if (sequence !== transactionSequence) return;
+      transactionPlan = plan;
+      const flatpaks = updates?.packages.filter((pkg) => pkg.backendId === 'flatpak') ?? [];
+      if (flatpaks.length) {
+        upgradeSources = [{ id: 'flatpak', name: 'Flatpak', packages: flatpaks, selected: true, plans: [], loading: false, error: '', previewVersion: 0 }];
+        await refreshUpgradeSourcePreview('flatpak');
+      }
     } catch (error) {
       if (sequence === transactionSequence) transactionError = error instanceof Error ? error.message : String(error);
     } finally {
       if (sequence === transactionSequence) transactionLoading = false;
     }
+  }
+
+  async function refreshUpgradeSourcePreview(sourceID: string) {
+    const source = upgradeSources.find((item) => item.id === sourceID);
+    if (!source) return;
+    const previewVersion = source.previewVersion + 1;
+    source.previewVersion = previewVersion;
+    source.loading = true;
+    source.error = '';
+    upgradeSources = [...upgradeSources];
+    try {
+      const scopes = [...new Set(source.packages.map((pkg) => pkg.scope || 'user'))];
+      const plans = await Promise.all(scopes.map(async (scope) => ({
+        scope,
+        plan: await PreviewPackages(source.id, source.packages.filter((pkg) => (pkg.scope || 'user') === scope).map((pkg) => pkg.id), 'update', scope)
+      })));
+      if (source.previewVersion === previewVersion) source.plans = plans;
+    } catch (error) {
+      if (source.previewVersion === previewVersion) source.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (source.previewVersion === previewVersion) {
+        source.loading = false;
+        upgradeSources = [...upgradeSources];
+      }
+    }
+  }
+
+  function toggleUpgradeSource(sourceID: string) {
+    const source = upgradeSources.find((item) => item.id === sourceID);
+    if (!source || transactionLoading) return;
+    source.selected = !source.selected;
+    upgradeSources = [...upgradeSources];
   }
 
   async function openDatabaseSync() {
@@ -683,6 +725,17 @@
       const changedPackages = transactionPlan.changes.map((change) => change.name);
       const result = await CommitPackage(transactionPlan.requestId);
       transactionExecutionLogs = result.diagnostics ?? [];
+      if (operation === 'system-upgrade') {
+        for (const source of upgradeSources) {
+          if (!source.selected) continue;
+          await refreshUpgradeSourcePreview(source.id);
+          if (source.error) throw new Error(`${source.name} preview failed: ${source.error}`);
+          for (const sourcePlan of source.plans) {
+            const sourceResult = await CommitPackage(sourcePlan.plan.requestId);
+            transactionExecutionLogs = [...transactionExecutionLogs, `[${source.name}]`, ...(sourceResult.diagnostics ?? [])];
+          }
+        }
+      }
       transactionOutcome = 'success';
       if (selectedPackage) {
         const updated = updatePackageAfterTransaction(selectedPackage, operation, changedPackages) as PackageView;
@@ -1658,17 +1711,28 @@
         {#if transactionLoading}<div class="space-y-2" role="status" aria-live="polite"><p class="text-xs text-surface-500">{transactionPlan ? 'Applying transaction…' : 'Preparing transaction preview…'}</p><div class="h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></div></div>{/if}
         {#if transactionPlan}
           <div class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-50-900 text-xs"><p class="border-b border-surface-300-700 px-3 py-2 font-semibold">Package transaction preview</p>{#if transactionPlan.changes.length}<div class="max-h-64 overflow-auto"><table class="w-full table-fixed text-left"><thead class="sticky top-0 bg-surface-200-800"><tr><th class="w-[28%] px-3 py-2">Name</th><th class="w-[14%] px-2 py-2">Action</th><th class="w-[19%] px-2 py-2">Version</th><th class="w-[21%] px-2 py-2">New version</th><th class="w-[18%] px-3 py-2 text-right">Download size</th></tr></thead><tbody>{#each transactionPlan.changes as change}<tr class="border-t border-surface-200-800"><td class="truncate px-3 py-1.5 font-medium" title={change.name}>{change.name}</td><td class="px-2 py-1.5 capitalize">{change.action}</td><td class="truncate px-2 py-1.5 font-mono" title={change.version || '—'}>{change.version || '—'}</td><td class="truncate px-2 py-1.5 font-mono" title={change.newVersion || '—'}>{change.newVersion || '—'}</td><td class="px-3 py-1.5 text-right font-mono">{change.action === 'remove' ? '—' : formatBytes(change.downloadSize)}</td></tr>{/each}</tbody></table></div>{#if transactionPlan.operation === 'remove' || transactionPlan.operation === 'purge' || transactionPlan.operation === 'remove-orphans' || transactionPlan.operation === 'force-remove' || transactionPlan.operation === 'purge-kernels'}<dl class="grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 border-t border-surface-300-700 px-3 py-2 font-mono"><dt>Size freed on disk</dt><dd class="text-right">{formatBytes(transactionPlan.installedSize)}</dd><dt>Space available on disk</dt><dd class="text-right">{formatBytes(transactionPlan.availableSpace)}</dd></dl>{:else if transactionPlan.operation === 'install' || transactionPlan.operation === 'update' || transactionPlan.operation === 'reinstall' || transactionPlan.operation === 'downgrade' || transactionPlan.operation === 'system-upgrade'}<dl class="grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 border-t border-surface-300-700 px-3 py-2 font-mono"><dt>Size to download</dt><dd class="text-right">{formatBytes(transactionPlan.downloadSize)}</dd><dt>Size required on disk</dt><dd class="text-right">{formatBytes(transactionPlan.installedSize)}</dd><dt>Space available on disk</dt><dd class="text-right">{formatBytes(transactionPlan.availableSpace)}</dd></dl>{/if}{:else if transactionPlan.diagnostics.length}<ul class="max-h-40 overflow-auto p-3 font-mono">{#each transactionPlan.diagnostics as line}<li class="break-all py-0.5">{line}</li>{/each}</ul>{:else}<p class="p-3 text-surface-500">No package changes were reported by the native preview.</p>{/if}</div>
+          {#if transactionPlan.operation === 'system-upgrade' && upgradeSources.length}
+            <section class="space-y-2" aria-labelledby="additional-source-updates"><h3 id="additional-source-updates" class="text-sm font-semibold">Additional source updates</h3>
+              {#each upgradeSources as source}
+                <div class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-50-900 text-xs">
+                  <div class="flex items-center gap-2 border-b border-surface-300-700 px-3 py-2"><input type="checkbox" checked={source.selected} disabled={transactionLoading} aria-label={`Include ${source.name} updates`} on:change={() => toggleUpgradeSource(source.id)} /><strong>{source.name}</strong><span class="ml-auto text-surface-500">{source.packages.length} updates</span></div>
+                  <div class="max-h-52 overflow-auto"><table class="w-full table-fixed text-left"><thead class="sticky top-0 bg-surface-200-800"><tr><th class="px-3 py-2">Name</th><th class="w-[24%] px-2 py-2">Current version</th><th class="w-[24%] px-3 py-2">New version</th></tr></thead><tbody>{#each source.packages as pkg}<tr class="border-t border-surface-200-800"><td class="truncate px-3 py-1.5 font-medium" title={pkg.name || pkg.id}>{pkg.name || pkg.id}</td><td class="truncate px-2 py-1.5 font-mono" title={pkg.version}>{pkg.version || '—'}</td><td class="truncate px-3 py-1.5 font-mono" title={pkg.newVersion}>{pkg.newVersion || '—'}</td></tr>{/each}</tbody></table></div>
+                  {#if source.loading}<p class="border-t border-surface-300-700 px-3 py-2 text-surface-500" role="status">Updating {source.name} preview…</p>{:else if source.error}<p class="border-t border-error-500/40 bg-error-500/10 px-3 py-2 text-error-700-300" role="alert">{source.error}</p>{:else if source.plans.length}<dl class="grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 border-t border-surface-300-700 px-3 py-2 font-mono"><dt>Transaction changes</dt><dd>{source.plans.reduce((total, item) => total + item.plan.changes.length, 0)}</dd><dt>Size to download</dt><dd>{formatBytes(source.plans.reduce((total, item) => total + item.plan.downloadSize, 0))}</dd><dt>Size required on disk</dt><dd>{formatBytes(source.plans.reduce((total, item) => total + item.plan.installedSize, 0))}</dd></dl>{:else}<p class="border-t border-surface-300-700 px-3 py-2 text-surface-500">No {source.name} updates selected.</p>{/if}
+                </div>
+              {/each}
+            </section>
+          {/if}
         {:else if !transactionLoading && !transactionError && !confirmationAction}
           <p class="rounded-base border border-warning-500/40 bg-warning-500/10 p-3 text-xs">This action is unavailable.</p>
         {/if}
-        {#if transactionLogsVisible}<section id="transaction-native-logs" class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50"><h3 class="border-b border-surface-700 px-3 py-2 text-xs font-semibold">Native logs</h3><pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{transactionLogs.length ? transactionLogs.join('\n') : 'No native output.'}</pre></section>{/if}
+        {#if transactionLogsVisible}<section id="transaction-native-logs" class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50"><h3 class="border-b border-surface-700 px-3 py-2 text-xs font-semibold">Logs</h3><pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{transactionLogs.length ? transactionLogs.join('\n') : 'No output.'}</pre></section>{/if}
         {#if transactionError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{transactionError}</p>{/if}
         {#if transactionOutcome === 'failure'}<div class="flex items-center gap-3 rounded-base border border-warning-500/40 bg-warning-500/10 p-3 text-xs"><p>Package state may have changed. Reload the catalog before creating a new transaction preview.</p><button type="button" class="btn preset-tonal ml-auto shrink-0" on:click={() => { confirmationDialog.close(); reloadPackages(); }}>Reload state</button></div>{/if}
         {#if transactionOutcome === 'success'}<p class="rounded-base border border-success-500/40 bg-success-500/10 p-3 text-sm text-success-700-300" role="status">Transaction complete.</p>{/if}
       </div>
       <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3">
         <button type="submit" class="btn preset-tonal" disabled={transactionLoading}>{transactionOutcome ? 'Close' : 'Cancel'}</button>
-        {#if !transactionOutcome}<button type="button" class="btn {confirmation.destructive ? 'bg-error-600 text-white' : 'preset-filled-primary-500'}" disabled={(!transactionPlan && !confirmationAction) || transactionLoading} on:click={executeConfirmation}>{transactionLoading ? 'Working…' : 'Confirm'}</button>{/if}
+        {#if !transactionOutcome}<button type="button" class="btn {confirmation.destructive ? 'bg-error-600 text-white' : 'preset-filled-primary-500'}" disabled={(!transactionPlan && !confirmationAction) || transactionLoading || upgradeSources.some((source) => source.selected && (source.loading || Boolean(source.error)))} on:click={executeConfirmation}>{transactionLoading ? 'Working…' : 'Confirm'}</button>{/if}
       </footer>
     </form>
   </dialog>

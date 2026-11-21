@@ -122,8 +122,13 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, />DKMS <span/);
   assert.match(app, /'purge-kernels'/);
   assert.match(app, /on:click=\{\(\) => transactionLogsVisible = !transactionLogsVisible\}/);
-  assert.match(app, /Native logs/);
+  assert.match(app, /Logs/);
   assert.match(app, /transactionExecutionLogs = result\.diagnostics/);
+  assert.match(app, /Additional source updates/);
+  assert.match(app, /refreshUpgradeSourcePreview/);
+  assert.match(app, /await CommitPackage\(transactionPlan\.requestId\);[\s\S]*for \(const source of upgradeSources\)/);
+  assert.match(app, /aria-label=\{`Include \$\{source\.name\} updates`\}/);
+  assert.doesNotMatch(app, /aria-label=\{`Update \$\{pkg\.name \|\| pkg\.id\}`\}/);
   assert.match(app, /Package state may have changed\. Reload the catalog/);
   assert.match(app, /InspectRepositoryKey\(repositoryURL\)/);
   assert.match(app, /Signing key fingerprint/);
