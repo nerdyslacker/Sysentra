@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"sysentra/internal/accounts"
+	"sysentra/internal/drivers"
 	"sysentra/internal/firewall"
 	"sysentra/internal/firmware"
 	"sysentra/internal/kernel"
@@ -73,7 +74,19 @@ type firewallReaderStub struct{ state firewall.State }
 
 type firmwareReaderStub struct{ catalog firmware.Catalog }
 
+type driverReaderStub struct{ catalog drivers.Catalog }
+
 func (s firmwareReaderStub) List(context.Context) (firmware.Catalog, error) { return s.catalog, nil }
+func (s driverReaderStub) List(context.Context) (drivers.Catalog, error)    { return s.catalog, nil }
+
+func TestDriverCatalogPreservesVerifiedPackageActions(t *testing.T) {
+	device := drivers.Device{Bus: "USB", ID: "0BDA:C811", Candidates: []drivers.Candidate{{Module: "8821cu", Package: "rtl8821cu-dkms", Available: true, CanInstall: true, Evidence: "Exact USB ID"}}}
+	service := NewSystemService(nil, nil, nil, nil, nil, nil, nil, driverReaderStub{catalog: drivers.Catalog{Devices: []drivers.Device{device}}}, nil, nil, nil, nil, nil, nil, nil)
+	view, err := service.ListDrivers()
+	if err != nil || len(view.Devices) != 1 || len(view.Devices[0].Candidates) != 1 || !view.Devices[0].Candidates[0].CanInstall {
+		t.Fatalf("view=%#v err=%v", view, err)
+	}
+}
 
 type sharesReaderStub struct{}
 

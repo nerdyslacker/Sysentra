@@ -205,6 +205,22 @@ func (s *PackageTransactionService) PreviewSystemUpgrade() (PackageTransactionPl
 	return s.previewPackageOperation(security.SystemUpgrade)
 }
 
+func (s *PackageTransactionService) PreviewDriverRemoval(packageID, module string) (PackageTransactionPlanView, error) {
+	requestID, err := newRequestID()
+	if err != nil {
+		return PackageTransactionPlanView{}, err
+	}
+	request := security.PackageRequest{Version: security.APIVersion, RequestID: requestID, Operation: security.RemoveDriver, Packages: []string{packageID}, DriverModules: []string{module}}
+	if err := request.Validate(); err != nil {
+		return PackageTransactionPlanView{}, err
+	}
+	plan, err := s.client.Plan(context.Background(), request)
+	if err != nil {
+		return PackageTransactionPlanView{}, err
+	}
+	return s.rememberPlan(packagePlanView(plan)), nil
+}
+
 func (s *PackageTransactionService) PreviewDatabaseSync() (PackageTransactionPlanView, error) {
 	return s.previewPackageOperation(security.SyncDatabase)
 }

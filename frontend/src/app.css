@@ -272,7 +272,7 @@ select option {
 }
 
 .driver-grid {
-  grid-template-columns: minmax(10rem, 1.7fr) minmax(8rem, 0.8fr) minmax(8rem, 0.8fr) auto;
+  grid-template-columns: minmax(10rem, 1.5fr) minmax(8rem, 0.7fr) minmax(7rem, 0.7fr) minmax(11rem, 1fr) auto;
 }
 
 .system-table {
@@ -400,7 +400,7 @@ select option {
     grid-template-columns: minmax(7rem, 1fr) minmax(5rem, 0.7fr) 9.5rem 6rem;
   }
   .driver-grid {
-    grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 0.8fr) auto;
+    grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 0.7fr) minmax(10rem, 1fr) auto;
   }
   .driver-bus {
     display: none;

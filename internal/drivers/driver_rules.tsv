@@ -1,0 +1,37 @@
+# bus	vendor:device	module	Void package	description
+USB	0BDA:8812	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
+USB	0BDA:881C	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
+USB	2357:0101	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
+USB	2357:010D	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
+USB	0BDA:0811	8821au	rtl8821au-dkms	Realtek RTL8811AU/RTL8821AU USB Wi-Fi driver
+USB	0BDA:0821	8821au	rtl8821au-dkms	Realtek RTL8811AU/RTL8821AU USB Wi-Fi driver
+USB	0BDA:8822	8821au	rtl8821au-dkms	Realtek RTL8811AU/RTL8821AU USB Wi-Fi driver
+USB	0BDA:8811	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
+USB	0BDA:C811	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
+USB	0BDA:C820	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
+USB	0BDA:C821	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
+USB	0BDA:B812	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
+USB	0BDA:B82C	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
+USB	2357:0115	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
+USB	2357:012D	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
+PCI	14E4:0576	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4311	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4312	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4313	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4315	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4328	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4329	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:432A	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:432B	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:432C	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:432D	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4353	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4357	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4358	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4359	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:435A	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4365	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:43A0	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:43B1	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:4727	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	14E4:A99D	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver

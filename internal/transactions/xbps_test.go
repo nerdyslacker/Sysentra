@@ -61,6 +61,26 @@ func (kernelPurgeRunner) Run(_ context.Context, name string, args ...string) (ru
 	}
 }
 
+type activeDriverRunner struct{}
+
+func (activeDriverRunner) Run(_ context.Context, name string, args ...string) (runner.Result, error) {
+	switch {
+	case name == "lsmod":
+		return runner.Result{Stdout: []byte("Module Size Used by\n8821cu 123 0\n")}, nil
+	case name == "xbps-query" && reflect.DeepEqual(args, []string{"-f", "rtl8821cu-dkms"}):
+		return runner.Result{Stdout: []byte("/usr/lib/modules/6.12/updates/dkms/8821cu.ko.zst\n")}, nil
+	default:
+		return runner.Result{}, errors.New("unexpected command")
+	}
+}
+
+func TestDriverRemovalRejectsPackageOwningLoadedModule(t *testing.T) {
+	err := validateDriverPackageRemoval(context.Background(), activeDriverRunner{}, []string{"rtl8821cu-dkms"}, []string{"8821cu"})
+	if err == nil || !strings.Contains(err.Error(), "module 8821cu is loaded") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func (r *downgradeRunner) Run(_ context.Context, name string, args ...string) (runner.Result, error) {
 	r.calls = append(r.calls, name+" "+strings.Join(args, " "))
 	switch name {

@@ -84,6 +84,11 @@ func (e *XBPSExecutor) Commit(ctx context.Context, plan Plan) (Result, error) {
 			return Result{}, err
 		}
 	}
+	if plan.Request.Operation == security.RemoveDriver {
+		if err := validateDriverPackageRemoval(ctx, e.runner, plan.Request.Packages, plan.Request.DriverModules); err != nil {
+			return Result{}, err
+		}
+	}
 	if plan.Request.Operation == security.Downgrade {
 		return e.commitDowngrade(ctx, plan)
 	}
@@ -258,7 +263,7 @@ func verifyPackageResult(ctx context.Context, commandRunner runner.Runner, plan 
 				return err
 			}
 		}
-	case security.Remove, security.Purge:
+	case security.Remove, security.Purge, security.RemoveDriver:
 		for _, name := range request.Packages {
 			if err := verifyRemovedPackage(ctx, commandRunner, name); err != nil {
 				return err
@@ -413,7 +418,7 @@ func executionCommand(request security.PackageRequest) (string, []string, error)
 		return xbpsInstall, []string{"--memory-sync", "--yes", "--update"}, nil
 	case security.SyncDatabase:
 		return xbpsInstall, []string{"--sync"}, nil
-	case security.Remove:
+	case security.Remove, security.RemoveDriver:
 		return xbpsRemove, append([]string{"--yes"}, request.Packages...), nil
 	case security.Purge:
 		return xbpsRemove, append([]string{"--yes", "--recursive"}, request.Packages...), nil
@@ -442,6 +447,11 @@ func (p *XBPSPlanner) Plan(ctx context.Context, request security.PackageRequest)
 	}
 	if request.Operation == security.Remove || request.Operation == security.Purge || request.Operation == security.ForceRemove {
 		if err := validateKernelPackageRemoval(ctx, p.runner, request.Packages); err != nil {
+			return Plan{}, err
+		}
+	}
+	if request.Operation == security.RemoveDriver {
+		if err := validateDriverPackageRemoval(ctx, p.runner, request.Packages, request.DriverModules); err != nil {
 			return Plan{}, err
 		}
 	}
@@ -557,6 +567,35 @@ func splitPackageVersion(pkgver string) (string, string, bool) {
 		return "", "", false
 	}
 	return pkgver[:separator], version, true
+}
+
+func validateDriverPackageRemoval(ctx context.Context, commandRunner runner.Runner, packages, modules []string) error {
+	result, err := commandRunner.Run(ctx, "lsmod")
+	if err != nil {
+		return fmt.Errorf("list loaded modules before driver removal: %w", err)
+	}
+	loaded := map[string]bool{}
+	for index, line := range strings.Split(string(result.Stdout), "\n") {
+		fields := strings.Fields(line)
+		if index > 0 && len(fields) > 0 {
+			loaded[fields[0]] = true
+		}
+	}
+	for index, packageName := range packages {
+		module := strings.ReplaceAll(modules[index], "-", "_")
+		if loaded[module] {
+			return fmt.Errorf("refusing to remove %s while module %s is loaded", packageName, modules[index])
+		}
+		files, err := commandRunner.Run(ctx, xbpsQuery, "-f", packageName)
+		if err != nil {
+			return fmt.Errorf("verify driver package %s: %w", packageName, err)
+		}
+		normalized := strings.ReplaceAll(strings.ToLower(string(files.Stdout)), "-", "_")
+		if !strings.Contains(normalized, strings.ToLower(module)) {
+			return fmt.Errorf("package %s does not contain evidence for module %s", packageName, modules[index])
+		}
+	}
+	return nil
 }
 
 func availableSpace(path string) int64 {
@@ -724,7 +763,7 @@ func previewCommand(request security.PackageRequest) (string, []string, bool) {
 		args = []string{"--dry-run", "--yes", "--update"}
 	case security.SystemUpgrade:
 		return xbpsInstall, []string{"--memory-sync", "--dry-run", "--yes", "--update"}, true
-	case security.Remove:
+	case security.Remove, security.RemoveDriver:
 		return xbpsRemove, append([]string{"--dry-run", "--yes"}, request.Packages...), true
 	case security.Purge:
 		return xbpsRemove, append([]string{"--dry-run", "--yes", "--recursive"}, request.Packages...), true

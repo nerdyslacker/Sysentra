@@ -347,18 +347,42 @@ type FirewallChangeInput struct {
 }
 
 type DriverDeviceView struct {
-	Category string `json:"category"`
-	Bus      string `json:"bus"`
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Driver   string `json:"driver"`
-	Status   string `json:"status"`
-	Evidence string `json:"evidence"`
+	Category   string                `json:"category"`
+	Bus        string                `json:"bus"`
+	ID         string                `json:"id"`
+	Name       string                `json:"name"`
+	Driver     string                `json:"driver"`
+	Status     string                `json:"status"`
+	Evidence   string                `json:"evidence"`
+	Candidates []DriverCandidateView `json:"candidates"`
+}
+
+type DriverCandidateView struct {
+	Module      string `json:"module"`
+	Package     string `json:"package"`
+	Version     string `json:"version"`
+	NewVersion  string `json:"newVersion"`
+	Description string `json:"description"`
+	Evidence    string `json:"evidence"`
+	Reason      string `json:"reason"`
+	Available   bool   `json:"available"`
+	Installed   bool   `json:"installed"`
+	Active      bool   `json:"active"`
+	CanInstall  bool   `json:"canInstall"`
+	CanUpdate   bool   `json:"canUpdate"`
+	CanRemove   bool   `json:"canRemove"`
 }
 
 type DriverCatalogView struct {
-	Devices  []DriverDeviceView `json:"devices"`
-	Warnings []string           `json:"warnings"`
+	Devices     []DriverDeviceView `json:"devices"`
+	Modules     []DriverModuleView `json:"modules"`
+	Diagnostics []string           `json:"diagnostics"`
+	Warnings    []string           `json:"warnings"`
+}
+
+type DriverModuleView struct {
+	Name    string `json:"name"`
+	Devices int    `json:"devices"`
 }
 
 type SystemService struct {
@@ -486,9 +510,16 @@ func (s *SystemService) ListDrivers() (DriverCatalogView, error) {
 	if err != nil {
 		return DriverCatalogView{}, err
 	}
-	view := DriverCatalogView{Devices: make([]DriverDeviceView, len(catalog.Devices)), Warnings: catalog.Warnings}
+	view := DriverCatalogView{Devices: make([]DriverDeviceView, len(catalog.Devices)), Modules: make([]DriverModuleView, len(catalog.Modules)), Diagnostics: catalog.Diagnostics, Warnings: catalog.Warnings}
+	for index, module := range catalog.Modules {
+		view.Modules[index] = DriverModuleView{Name: module.Name, Devices: module.Devices}
+	}
 	for index, device := range catalog.Devices {
-		view.Devices[index] = DriverDeviceView{Category: device.Category, Bus: device.Bus, ID: device.ID, Name: device.Name, Driver: device.Driver, Status: device.Status(), Evidence: device.Evidence}
+		candidates := make([]DriverCandidateView, len(device.Candidates))
+		for candidateIndex, candidate := range device.Candidates {
+			candidates[candidateIndex] = DriverCandidateView{Module: candidate.Module, Package: candidate.Package, Version: candidate.Version, NewVersion: candidate.NewVersion, Description: candidate.Description, Evidence: candidate.Evidence, Reason: candidate.Reason, Available: candidate.Available, Installed: candidate.Installed, Active: candidate.Active, CanInstall: candidate.CanInstall, CanUpdate: candidate.CanUpdate, CanRemove: candidate.CanRemove}
+		}
+		view.Devices[index] = DriverDeviceView{Category: device.Category, Bus: device.Bus, ID: device.ID, Name: device.Name, Driver: device.Driver, Status: device.Status(), Evidence: device.Evidence, Candidates: candidates}
 	}
 	return view, nil
 }

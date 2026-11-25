@@ -8,7 +8,7 @@ import (
 
 const (
 	APIVersion       = 1
-	HelperAPIVersion = 19
+	HelperAPIVersion = 20
 )
 
 type Operation string
@@ -17,6 +17,7 @@ const (
 	Install        Operation = "install"
 	Remove         Operation = "remove"
 	Purge          Operation = "purge"
+	RemoveDriver   Operation = "remove-driver"
 	Reinstall      Operation = "reinstall"
 	Reconfigure    Operation = "reconfigure"
 	Update         Operation = "update"
@@ -38,6 +39,7 @@ const (
 var (
 	requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$`)
 	packagePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+_.-]{0,127}$`)
+	modulePattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 )
 
 type PackageRequest struct {
@@ -46,6 +48,7 @@ type PackageRequest struct {
 	Operation     Operation `json:"operation"`
 	Packages      []string  `json:"packages"`
 	TargetVersion string    `json:"targetVersion,omitempty"`
+	DriverModules []string  `json:"driverModules,omitempty"`
 }
 
 func (r PackageRequest) Validate() error {
@@ -70,6 +73,18 @@ func (r PackageRequest) Validate() error {
 	if r.Operation != Downgrade && r.TargetVersion != "" {
 		return errors.New("target version is only valid for downgrade")
 	}
+	if r.Operation == RemoveDriver {
+		if len(r.DriverModules) != len(r.Packages) {
+			return errors.New("driver removal requires one module for each package")
+		}
+		for _, module := range r.DriverModules {
+			if !modulePattern.MatchString(module) {
+				return fmt.Errorf("invalid driver module %q", module)
+			}
+		}
+	} else if len(r.DriverModules) != 0 {
+		return errors.New("driver modules are only valid for driver removal")
+	}
 	if len(r.Packages) == 0 || len(r.Packages) > 128 {
 		return errors.New("package operation requires 1 to 128 packages")
 	}
@@ -85,7 +100,7 @@ func (r PackageRequest) Validate() error {
 
 func validOperation(operation Operation) bool {
 	switch operation {
-	case Install, Remove, Purge, Reinstall, Reconfigure, Update, Downgrade, SystemUpgrade, SyncDatabase, Hold, Unhold, RepoLock, RepoUnlock, RemoveOrphans, ForceRemove, CleanCache, VerifyDatabase, ReconfigureAll, PurgeKernels:
+	case Install, Remove, Purge, RemoveDriver, Reinstall, Reconfigure, Update, Downgrade, SystemUpgrade, SyncDatabase, Hold, Unhold, RepoLock, RepoUnlock, RemoveOrphans, ForceRemove, CleanCache, VerifyDatabase, ReconfigureAll, PurgeKernels:
 		return true
 	default:
 		return false

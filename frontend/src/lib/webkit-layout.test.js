@@ -116,6 +116,14 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /'Install update'/);
   assert.match(app, /fwupd keeps its signature, power, device-safety, and offline-update checks enabled/);
   assert.match(app, /firmwareActionLogs\.join\('\\n'\)/);
+  assert.match(app, /device\.candidates/);
+  assert.match(app, /candidate\.canInstall/);
+  assert.match(app, /candidate\.canRemove/);
+  assert.match(app, /candidate\.evidence/);
+  assert.match(app, /const driverCategories = \['All', 'Active',/);
+  assert.match(app, /driverCategory === 'Active' \? Boolean\(item\.driver\)/);
+  assert.doesNotMatch(app, />Active modules</);
+  assert.match(app, /PreviewDriverRemoval\(packageName, module\)/);
   assert.match(app, /ChangeTurnstileReady\(operation, names\)/);
   assert.match(app, /UpdateTurnstileEnvironment\(values\)/);
   assert.match(app, />Boot images <span/);

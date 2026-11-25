@@ -194,6 +194,15 @@ func TestPackageTransactionServicePlansSystemUpgradeWithoutPackageNames(t *testi
 	}
 }
 
+func TestPackageTransactionServicePlansDriverRemovalWithModuleEvidence(t *testing.T) {
+	client := &transactionClientStub{plan: transactions.Plan{ExpiresAt: time.Unix(100, 0)}}
+	service := NewPackageTransactionService(client, &transactionRunnerStub{})
+	plan, err := service.PreviewDriverRemoval("rtl8821cu-dkms", "8821cu")
+	if err != nil || plan.RequestID == "" || client.request.Operation != security.RemoveDriver || !reflect.DeepEqual(client.request.DriverModules, []string{"8821cu"}) {
+		t.Fatalf("request=%#v plan=%#v err=%v", client.request, plan, err)
+	}
+}
+
 func TestPackageTransactionServicePlansMaintenanceOperation(t *testing.T) {
 	client := &transactionClientStub{plan: transactions.Plan{ExpiresAt: time.Unix(100, 0)}}
 	service := NewPackageTransactionService(client, &transactionRunnerStub{})

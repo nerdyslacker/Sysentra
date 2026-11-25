@@ -5,7 +5,7 @@
   import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, SambaShareView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
   import { Discover, FindOwningPackage, GetPackageDetails, ListAdditionalSources, ListInstalled, ListUpdates, SetAdditionalSourceEnabled } from '../bindings/sysentra/internal/app/packageservice';
   import { ListSystemFonts } from '../bindings/sysentra/internal/app/fontservice';
-  import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
+  import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewDriverRemoval, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
   import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeFirmware, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaGlobal, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
@@ -17,7 +17,7 @@
   import { updatePackageAfterTransaction } from './lib/package-list.js';
 
   const navigation = ['Discover', 'Installed', 'Updates', 'Repositories', 'XBPS Config', 'Mirrors', 'Services', 'Users & Groups', 'Firewall', 'Samba Server', 'NFS Client', 'Kernels', 'Firmware', 'Drivers'];
-  const driverCategories = ['All', 'Video', 'Wi-Fi', 'Ethernet', 'Bluetooth', 'Audio', 'Webcam', 'Touchscreen', 'Printers', 'Scanners', 'Other'];
+  const driverCategories = ['All', 'Active', 'Video', 'Wi-Fi', 'Ethernet', 'Bluetooth', 'Audio', 'Webcam', 'Touchscreen', 'Printers', 'Scanners', 'Other'];
   const themes = [['default', 'Default'], ['catppuccin', 'Catppuccin'], ['everforest', 'Everforest'], ['github', 'GitHub'], ['gruvbox', 'Gruvbox'], ['one-dark', 'One Dark'], ['dracula', 'Dracula'], ['sepia', 'Sepia'], ['nord', 'Nord'], ['material', 'Material']];
   const sambaPermissions = [['0744', '744 – rwx r-- r--'], ['0755', '755 – rwx r-x r-x'], ['0770', '770 – rwx rwx ---'], ['0775', '775 – rwx rwx r-x'], ['0777', '777 – rwx rwx rwx']];
   type UpgradeSourcePlan = { scope: string; plan: PackageTransactionPlanView };
@@ -76,6 +76,7 @@
   let firewallError = '';
   let driverDevices: DriverDeviceView[] = [];
   let driverWarnings: string[] = [];
+  let driverDiagnostics: string[] = [];
   let driverCategory = 'All';
   let sambaServer: SambaServerView | null = null;
   let nfsMounts: NFSMountView[] = [];
@@ -224,7 +225,7 @@
   $: filteredMirrors = mirrors.filter((item) => (!mirrorTier || item.tier === mirrorTier) && (mirrorRegion === 'All' || item.region === mirrorRegion) && [item.url, item.region, item.location, item.status].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredFirmwareDevices = firmwareDevices.filter((item) => [item.name, item.vendor, item.summary, item.version, item.newVersion, item.id].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredFirewallRules = (firewall?.rules ?? []).filter((item) => [item.target, item.action, item.source].some((value) => value.toLowerCase().includes(normalizedQuery)));
-  $: filteredDriverDevices = driverDevices.filter((item) => (driverCategory === 'All' || item.category === driverCategory) && [item.category, item.bus, item.id, item.name, item.driver, item.status, item.evidence].some((value) => value.toLowerCase().includes(normalizedQuery)));
+  $: filteredDriverDevices = driverDevices.filter((item) => (driverCategory === 'All' || (driverCategory === 'Active' ? Boolean(item.driver) : item.category === driverCategory)) && [item.category, item.bus, item.id, item.name, item.driver, item.status, item.evidence].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredSambaShares = (sambaServer?.shares ?? []).filter((item) => [item.name, item.path, item.comment, item.validUsers, item.writeList, item.readList, item.readOnly ? 'read only' : 'writable', item.guestOK ? 'guest' : 'authenticated'].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredNFSMounts = nfsMounts.filter((item) => [item.source, item.target, item.type, item.options, item.mounted ? 'mounted' : 'unmounted'].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredUsers = users.filter((item) => [item.name, item.home, item.shell, String(item.uid), ...item.groups].some((value) => value.toLowerCase().includes(normalizedQuery)));
@@ -346,6 +347,7 @@
         const result = await ListDrivers();
         if (requestID === systemRequestID) {
           driverDevices = result.devices;
+          driverDiagnostics = result.diagnostics;
           driverWarnings = result.warnings;
         }
       }
@@ -561,7 +563,7 @@
     if (name === 'Reconfigure packages') return void openMaintenance(name, description, 'reconfigure-all', false);
   }
 
-  async function openNamedPackageTransaction(title: string, description: string, packageNames: string[], action: 'install' | 'remove' | 'purge' | 'reconfigure') {
+  async function openNamedPackageTransaction(title: string, description: string, packageNames: string[], action: 'install' | 'update' | 'remove' | 'purge' | 'reconfigure') {
     if (packageNames.length === 0) return;
     confirmation = { title, description, destructive: action === 'remove' || action === 'purge' };
     transactionPlan = null;
@@ -575,6 +577,37 @@
     const sequence = ++transactionSequence;
     try {
       const plan = await PreviewPackages('xbps', packageNames, action, '');
+      if (sequence === transactionSequence) transactionPlan = plan;
+    } catch (error) {
+      if (sequence === transactionSequence) transactionError = error instanceof Error ? error.message : String(error);
+    } finally {
+      if (sequence === transactionSequence) transactionLoading = false;
+    }
+  }
+
+  function openDriverPackageTransaction(device: DriverDeviceView, candidate: DriverDeviceView['candidates'][number], action: 'install' | 'update' | 'remove') {
+    const verb = action === 'remove' ? 'Remove' : action === 'update' ? 'Update' : 'Install';
+    const reboot = action === 'remove' || candidate.module !== device.driver ? ' A reboot may be required before the driver state changes.' : '';
+    if (action === 'remove') {
+      void openDriverRemoval(candidate.package, candidate.module, `${candidate.evidence}.${reboot}`);
+      return;
+    }
+    void openNamedPackageTransaction(`${verb} ${candidate.package}`, `${candidate.evidence}.${reboot}`, [candidate.package], action);
+  }
+
+  async function openDriverRemoval(packageName: string, module: string, description: string) {
+    confirmation = { title: `Remove ${packageName}`, description, destructive: true };
+    transactionPlan = null;
+    transactionError = '';
+    transactionOutcome = '';
+    transactionExecutionLogs = [];
+    transactionLogsVisible = false;
+    confirmationAction = null;
+    transactionLoading = true;
+    confirmationDialog.showModal();
+    const sequence = ++transactionSequence;
+    try {
+      const plan = await PreviewDriverRemoval(packageName, module);
       if (sequence === transactionSequence) transactionPlan = plan;
     } catch (error) {
       if (sequence === transactionSequence) transactionError = error instanceof Error ? error.message : String(error);
@@ -1639,9 +1672,10 @@
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="drivers-heading">
           <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="drivers-heading" class="font-semibold">Hardware drivers</h2><p class="text-xs text-surface-500">PCI and USB devices with their currently bound kernel drivers.</p></div><button type="button" class="btn preset-tonal ml-auto" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></header>
           {#each driverWarnings as warning}<p class="border-b border-warning-500/30 bg-warning-500/10 px-3 py-2 text-sm" role="status">{warning}</p>{/each}
+          {#if driverDiagnostics.length}<div class="flex flex-wrap gap-x-3 gap-y-1 border-b border-surface-300-700 px-3 py-2 text-xs text-surface-500">{#each driverDiagnostics as diagnostic}<span>{diagnostic}</span>{/each}</div>{/if}
           <div class="flex flex-wrap gap-1 border-b border-surface-300-700 p-2" aria-label="Driver category filters">{#each driverCategories as category}<button type="button" class="rounded-base px-2.5 py-1 text-xs {driverCategory === category ? 'bg-primary-500/15 font-semibold text-primary-700-300' : 'hover:bg-surface-200-800'}" aria-pressed={driverCategory === category} on:click={() => driverCategory = category}>{category}</button>{/each}</div>
-          <div class="driver-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Device</span><span class="driver-bus">Bus / ID</span><span>Kernel driver</span><span>Status</span></div>
-          <div class="system-table-body">{#each filteredDriverDevices as device}<div class="driver-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><div class="min-w-0"><p class="truncate font-medium">{device.name}</p><p class="truncate text-xs text-surface-500">{device.category} · {device.evidence}</p></div><span class="driver-bus truncate font-mono text-xs">{device.bus} {device.id}</span><span class="truncate font-mono text-xs">{device.driver || '—'}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {device.driver ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-warning-500/40 bg-warning-500/10 text-warning-700-300'}">{device.status}</span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching devices.</p>{/each}</div>
+          <div class="driver-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Device</span><span class="driver-bus">Bus / ID</span><span>Kernel driver</span><span>Verified package</span><span>Status</span></div>
+          <div class="system-table-body">{#each filteredDriverDevices as device}<div class="driver-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><div class="min-w-0"><p class="truncate font-medium">{device.name}</p><p class="truncate text-xs text-surface-500">{device.category} · {device.evidence}</p></div><span class="driver-bus truncate font-mono text-xs">{device.bus} {device.id}</span><span class="truncate font-mono text-xs">{device.driver || '—'}</span><div class="min-w-0 space-y-1">{#each device.candidates as candidate}<div class="flex min-w-0 items-center gap-1" title={`${candidate.description}. ${candidate.evidence}${candidate.reason ? `. ${candidate.reason}` : ''}`}><span class="min-w-0 flex-1 truncate font-mono text-xs">{candidate.package}</span>{#if candidate.canInstall}<button type="button" class="btn preset-tonal px-2 py-1 text-xs" on:click={() => openDriverPackageTransaction(device, candidate, 'install')}>Install</button>{:else if candidate.canUpdate}<button type="button" class="btn preset-tonal px-2 py-1 text-xs" on:click={() => openDriverPackageTransaction(device, candidate, 'update')}>Update</button>{:else if candidate.canRemove}<button type="button" class="btn border-error-500/50 px-2 py-1 text-xs text-error-700-300" on:click={() => openDriverPackageTransaction(device, candidate, 'remove')}>Remove</button>{:else}<span class="truncate text-xs text-surface-500">{candidate.active ? 'Active' : candidate.reason || (candidate.installed ? 'Installed' : 'Unavailable')}</span>{/if}</div>{:else}<span class="text-xs text-surface-500">—</span>{/each}</div><span class="w-fit rounded-full border px-2 py-0.5 text-xs {device.driver ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-warning-500/40 bg-warning-500/10 text-warning-700-300'}">{device.status}</span></div>{:else}<p class="p-5 text-sm text-surface-500" role="status">No matching devices.</p>{/each}</div>
         </section>
       {/if}
     </div>
@@ -1710,7 +1744,7 @@
         <p class="text-sm">{confirmation.description}</p>
         {#if transactionLoading}<div class="space-y-2" role="status" aria-live="polite"><p class="text-xs text-surface-500">{transactionPlan ? 'Applying transaction…' : 'Preparing transaction preview…'}</p><div class="h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></div></div>{/if}
         {#if transactionPlan}
-          <div class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-50-900 text-xs"><p class="border-b border-surface-300-700 px-3 py-2 font-semibold">Package transaction preview</p>{#if transactionPlan.changes.length}<div class="max-h-64 overflow-auto"><table class="w-full table-fixed text-left"><thead class="sticky top-0 bg-surface-200-800"><tr><th class="w-[28%] px-3 py-2">Name</th><th class="w-[14%] px-2 py-2">Action</th><th class="w-[19%] px-2 py-2">Version</th><th class="w-[21%] px-2 py-2">New version</th><th class="w-[18%] px-3 py-2 text-right">Download size</th></tr></thead><tbody>{#each transactionPlan.changes as change}<tr class="border-t border-surface-200-800"><td class="truncate px-3 py-1.5 font-medium" title={change.name}>{change.name}</td><td class="px-2 py-1.5 capitalize">{change.action}</td><td class="truncate px-2 py-1.5 font-mono" title={change.version || '—'}>{change.version || '—'}</td><td class="truncate px-2 py-1.5 font-mono" title={change.newVersion || '—'}>{change.newVersion || '—'}</td><td class="px-3 py-1.5 text-right font-mono">{change.action === 'remove' ? '—' : formatBytes(change.downloadSize)}</td></tr>{/each}</tbody></table></div>{#if transactionPlan.operation === 'remove' || transactionPlan.operation === 'purge' || transactionPlan.operation === 'remove-orphans' || transactionPlan.operation === 'force-remove' || transactionPlan.operation === 'purge-kernels'}<dl class="grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 border-t border-surface-300-700 px-3 py-2 font-mono"><dt>Size freed on disk</dt><dd class="text-right">{formatBytes(transactionPlan.installedSize)}</dd><dt>Space available on disk</dt><dd class="text-right">{formatBytes(transactionPlan.availableSpace)}</dd></dl>{:else if transactionPlan.operation === 'install' || transactionPlan.operation === 'update' || transactionPlan.operation === 'reinstall' || transactionPlan.operation === 'downgrade' || transactionPlan.operation === 'system-upgrade'}<dl class="grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 border-t border-surface-300-700 px-3 py-2 font-mono"><dt>Size to download</dt><dd class="text-right">{formatBytes(transactionPlan.downloadSize)}</dd><dt>Size required on disk</dt><dd class="text-right">{formatBytes(transactionPlan.installedSize)}</dd><dt>Space available on disk</dt><dd class="text-right">{formatBytes(transactionPlan.availableSpace)}</dd></dl>{/if}{:else if transactionPlan.diagnostics.length}<ul class="max-h-40 overflow-auto p-3 font-mono">{#each transactionPlan.diagnostics as line}<li class="break-all py-0.5">{line}</li>{/each}</ul>{:else}<p class="p-3 text-surface-500">No package changes were reported by the native preview.</p>{/if}</div>
+          <div class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-50-900 text-xs"><p class="border-b border-surface-300-700 px-3 py-2 font-semibold">Package transaction preview</p>{#if transactionPlan.changes.length}<div class="max-h-64 overflow-auto"><table class="w-full table-fixed text-left"><thead class="sticky top-0 bg-surface-200-800"><tr><th class="w-[28%] px-3 py-2">Name</th><th class="w-[14%] px-2 py-2">Action</th><th class="w-[19%] px-2 py-2">Version</th><th class="w-[21%] px-2 py-2">New version</th><th class="w-[18%] px-3 py-2 text-right">Download size</th></tr></thead><tbody>{#each transactionPlan.changes as change}<tr class="border-t border-surface-200-800"><td class="truncate px-3 py-1.5 font-medium" title={change.name}>{change.name}</td><td class="px-2 py-1.5 capitalize">{change.action}</td><td class="truncate px-2 py-1.5 font-mono" title={change.version || '—'}>{change.version || '—'}</td><td class="truncate px-2 py-1.5 font-mono" title={change.newVersion || '—'}>{change.newVersion || '—'}</td><td class="px-3 py-1.5 text-right font-mono">{change.action === 'remove' ? '—' : formatBytes(change.downloadSize)}</td></tr>{/each}</tbody></table></div>{#if transactionPlan.operation === 'remove' || transactionPlan.operation === 'remove-driver' || transactionPlan.operation === 'purge' || transactionPlan.operation === 'remove-orphans' || transactionPlan.operation === 'force-remove' || transactionPlan.operation === 'purge-kernels'}<dl class="grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 border-t border-surface-300-700 px-3 py-2 font-mono"><dt>Size freed on disk</dt><dd class="text-right">{formatBytes(transactionPlan.installedSize)}</dd><dt>Space available on disk</dt><dd class="text-right">{formatBytes(transactionPlan.availableSpace)}</dd></dl>{:else if transactionPlan.operation === 'install' || transactionPlan.operation === 'update' || transactionPlan.operation === 'reinstall' || transactionPlan.operation === 'downgrade' || transactionPlan.operation === 'system-upgrade'}<dl class="grid grid-cols-[1fr_auto] gap-x-5 gap-y-1 border-t border-surface-300-700 px-3 py-2 font-mono"><dt>Size to download</dt><dd class="text-right">{formatBytes(transactionPlan.downloadSize)}</dd><dt>Size required on disk</dt><dd class="text-right">{formatBytes(transactionPlan.installedSize)}</dd><dt>Space available on disk</dt><dd class="text-right">{formatBytes(transactionPlan.availableSpace)}</dd></dl>{/if}{:else if transactionPlan.diagnostics.length}<ul class="max-h-40 overflow-auto p-3 font-mono">{#each transactionPlan.diagnostics as line}<li class="break-all py-0.5">{line}</li>{/each}</ul>{:else}<p class="p-3 text-surface-500">No package changes were reported by the native preview.</p>{/if}</div>
           {#if transactionPlan.operation === 'system-upgrade' && upgradeSources.length}
             <section class="space-y-2" aria-labelledby="additional-source-updates"><h3 id="additional-source-updates" class="text-sm font-semibold">Additional source updates</h3>
               {#each upgradeSources as source}

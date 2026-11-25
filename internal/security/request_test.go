@@ -16,6 +16,13 @@ func TestValidatePackageRequestAcceptsRecursivePurge(t *testing.T) {
 	}
 }
 
+func TestValidatePackageRequestAcceptsDriverRemoval(t *testing.T) {
+	request := PackageRequest{Version: APIVersion, RequestID: "request-1234", Operation: RemoveDriver, Packages: []string{"rtl8821cu-dkms"}, DriverModules: []string{"8821cu"}}
+	if err := request.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidatePackageRequestAcceptsReconfigure(t *testing.T) {
 	request := PackageRequest{Version: APIVersion, RequestID: "request-1234", Operation: Reconfigure, Packages: []string{"linux7.3"}}
 	if err := request.Validate(); err != nil {
