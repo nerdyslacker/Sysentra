@@ -253,6 +253,7 @@ type KernelStatusView struct {
 }
 
 type RepositoryView struct {
+	Name     string `json:"name"`
 	URL      string `json:"url"`
 	Priority int    `json:"priority"`
 	Origin   string `json:"origin"`
@@ -282,6 +283,7 @@ type MirrorRecoveryView struct {
 type XBPSConfigRuleView struct {
 	Kind    string `json:"kind"`
 	Value   string `json:"value"`
+	File    string `json:"file"`
 	Origin  string `json:"origin"`
 	Mutable bool   `json:"mutable"`
 }
@@ -856,7 +858,7 @@ func (s *SystemService) ListRepositories() ([]RepositoryView, error) {
 	}
 	views := make([]RepositoryView, len(items))
 	for index, item := range items {
-		views[index] = RepositoryView{URL: item.URL, Priority: item.Priority, Origin: "Effective XBPS configuration", Enabled: item.Enabled, Mutable: item.Mutable}
+		views[index] = RepositoryView{Name: item.Name, URL: item.URL, Priority: item.Priority, Origin: "Effective XBPS configuration", Enabled: item.Enabled, Mutable: item.Mutable}
 	}
 	return views, nil
 }
@@ -902,13 +904,13 @@ func (s *SystemService) ListXBPSConfigRules() ([]XBPSConfigRuleView, error) {
 	}
 	views := make([]XBPSConfigRuleView, len(rules))
 	for index, rule := range rules {
-		views[index] = XBPSConfigRuleView{Kind: rule.Kind, Value: rule.Value, Origin: rule.Origin, Mutable: rule.Mutable}
+		views[index] = XBPSConfigRuleView{Kind: rule.Kind, Value: rule.Value, File: rule.File, Origin: rule.Origin, Mutable: rule.Mutable}
 	}
 	return views, nil
 }
 
-func (s *SystemService) ChangeXBPSRule(operation, kind, value, oldValue string) ([]XBPSConfigRuleView, error) {
-	request := security.XBPSRuleRequest{Version: security.APIVersion, Operation: security.RuleOperation(operation), Kind: security.RuleKind(kind), Value: value, OldValue: oldValue}
+func (s *SystemService) ChangeXBPSRule(operation, kind, value, oldValue, file string) ([]XBPSConfigRuleView, error) {
+	request := security.XBPSRuleRequest{Version: security.APIVersion, Operation: security.RuleOperation(operation), Kind: security.RuleKind(kind), Value: value, OldValue: oldValue, File: file}
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
@@ -918,8 +920,8 @@ func (s *SystemService) ChangeXBPSRule(operation, kind, value, oldValue string) 
 	return s.ListXBPSConfigRules()
 }
 
-func (s *SystemService) ChangeRepository(operation, value, oldValue string, trustConfirmed bool) ([]RepositoryView, error) {
-	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SystemConfigOperation("repository-" + operation), Value: value, OldValue: oldValue, TrustConfirmed: trustConfirmed}
+func (s *SystemService) ChangeRepository(operation, name, value, oldValue string, trustConfirmed bool) ([]RepositoryView, error) {
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.SystemConfigOperation("repository-" + operation), Value: value, OldValue: oldValue, Path: name, TrustConfirmed: trustConfirmed}
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}

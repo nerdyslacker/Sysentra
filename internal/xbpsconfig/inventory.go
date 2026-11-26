@@ -10,6 +10,7 @@ import (
 type Rule struct {
 	Kind    string
 	Value   string
+	File    string
 	Origin  string
 	Mutable bool
 }
@@ -46,13 +47,12 @@ func (i *Inventory) List() ([]Rule, error) {
 		if err != nil {
 			return nil, err
 		}
-		mutable := filepath.Dir(path) == i.localDir && name == ManagedFile
 		for _, line := range strings.Split(string(contents), "\n") {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "ignorepkg=") {
-				rules = append(rules, Rule{Kind: "Ignored package", Value: strings.TrimPrefix(line, "ignorepkg="), Origin: path, Mutable: mutable})
+				rules = append(rules, Rule{Kind: "Ignored package", Value: strings.TrimPrefix(line, "ignorepkg="), File: name, Origin: path, Mutable: true})
 			} else if strings.HasPrefix(line, "virtualpkg=") {
-				rules = append(rules, Rule{Kind: "Virtual package", Value: strings.TrimPrefix(line, "virtualpkg="), Origin: path, Mutable: mutable})
+				rules = append(rules, Rule{Kind: "Virtual package", Value: strings.TrimPrefix(line, "virtualpkg="), File: name, Origin: path, Mutable: true})
 			}
 		}
 	}

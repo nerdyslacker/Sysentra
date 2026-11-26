@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"sysentra/internal/runner"
 )
 
 type Repository struct {
+	Name     string
 	URL      string
 	Priority int
 	Enabled  bool
@@ -18,12 +20,12 @@ type Repository struct {
 }
 
 type Inventory struct {
-	runner    runner.Runner
-	configDir string
+	runner               runner.Runner
+	configDir, vendorDir string
 }
 
 func NewInventory(commandRunner runner.Runner) *Inventory {
-	return &Inventory{runner: commandRunner, configDir: "/etc/xbps.d"}
+	return &Inventory{runner: commandRunner, configDir: "/etc/xbps.d", vendorDir: "/usr/share/xbps.d"}
 }
 
 func (i *Inventory) List(ctx context.Context) ([]Repository, error) {
@@ -31,7 +33,7 @@ func (i *Inventory) List(ctx context.Context) ([]Repository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list XBPS repositories: %w", err)
 	}
-	return mergeConfiguredRepositories(parseRepositories(result.Stdout), i.configDir), nil
+	return mergeConfiguredRepositories(parseRepositories(result.Stdout), i.configDir, i.vendorDir), nil
 }
 
 func parseRepositories(output []byte) []Repository {
@@ -52,14 +54,25 @@ func parseRepositories(output []byte) []Repository {
 	return result
 }
 
-func mergeConfiguredRepositories(repositories []Repository, configDir string) []Repository {
+func mergeConfiguredRepositories(repositories []Repository, configDir, vendorDir string) []Repository {
 	byURL := make(map[string]int, len(repositories))
 	for index, repository := range repositories {
 		byURL[repository.URL] = index
 	}
-	paths, _ := filepath.Glob(filepath.Join(configDir, "*.conf"))
-	for _, path := range paths {
-		mutable := filepath.Base(path) == "sysentra-repositories.conf"
+	files := map[string]string{}
+	for _, dir := range []string{vendorDir, configDir} {
+		paths, _ := filepath.Glob(filepath.Join(dir, "*.conf"))
+		for _, path := range paths {
+			files[filepath.Base(path)] = path
+		}
+	}
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		path := files[name]
 		contents, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -72,11 +85,12 @@ func mergeConfiguredRepositories(repositories []Repository, configDir string) []
 				continue
 			}
 			if index, found := byURL[url]; found {
-				repositories[index].Mutable = repositories[index].Mutable || mutable
+				repositories[index].Name = name
+				repositories[index].Mutable = true
 				continue
 			}
 			byURL[url] = len(repositories)
-			repositories = append(repositories, Repository{URL: url, Priority: len(repositories) + 1, Enabled: enabled, Mutable: mutable})
+			repositories = append(repositories, Repository{Name: name, URL: url, Priority: len(repositories) + 1, Enabled: enabled, Mutable: true})
 		}
 	}
 	return repositories

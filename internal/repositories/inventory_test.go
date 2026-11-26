@@ -18,19 +18,19 @@ func TestMergeConfiguredRepositoriesKeepsDisabledEntries(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "sysentra-repositories.conf"), []byte("repository=https://repo.example/current\n#repository=https://repo.example/disabled\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := mergeConfiguredRepositories([]Repository{{URL: "https://repo.example/current", Priority: 1, Enabled: true}}, dir)
-	if len(got) != 2 || !got[0].Mutable || got[1].URL != "https://repo.example/disabled" || got[1].Enabled || !got[1].Mutable {
+	got := mergeConfiguredRepositories([]Repository{{URL: "https://repo.example/current", Priority: 1, Enabled: true}}, dir, "")
+	if len(got) != 2 || got[0].Name != "sysentra-repositories.conf" || !got[0].Mutable || got[1].URL != "https://repo.example/disabled" || got[1].Enabled || !got[1].Mutable {
 		t.Fatalf("repositories = %#v", got)
 	}
 }
 
-func TestMergeConfiguredRepositoriesKeepsForeignFilesReadOnly(t *testing.T) {
+func TestMergeConfiguredRepositoriesIdentifiesExistingFilesAsMutable(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "custom.conf"), []byte("repository=https://repo.example/current\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := mergeConfiguredRepositories(nil, dir)
-	if len(got) != 1 || got[0].Mutable {
+	got := mergeConfiguredRepositories(nil, dir, "")
+	if len(got) != 1 || got[0].Name != "custom.conf" || !got[0].Mutable {
 		t.Fatalf("repositories = %#v", got)
 	}
 }

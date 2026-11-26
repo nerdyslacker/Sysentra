@@ -25,6 +25,7 @@ type XBPSRuleRequest struct {
 	Kind      RuleKind      `json:"kind"`
 	Value     string        `json:"value"`
 	OldValue  string        `json:"oldValue,omitempty"`
+	File      string        `json:"file,omitempty"`
 }
 
 func (r XBPSRuleRequest) Validate() error {
@@ -43,6 +44,13 @@ func (r XBPSRuleRequest) Validate() error {
 		}
 	} else if r.OldValue != "" {
 		return errors.New("old value is only valid for edit")
+	}
+	if r.Operation == RuleAdd {
+		if r.File != "" {
+			return errors.New("configuration file is only valid for edit and remove")
+		}
+	} else if !validXBPSConfigFile(r.File) {
+		return errors.New("edit and remove require a valid XBPS configuration filename")
 	}
 	return nil
 }

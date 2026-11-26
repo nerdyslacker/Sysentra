@@ -203,7 +203,7 @@ func main() {
 	packageService := daemon.NewService(authorizer, transactions.NewSystemXBPSPlanner(commands), transactions.NewSystemXBPSExecutor(commands), daemon.NewJSONAuditSink(os.Stdout))
 	serviceInventory := services.NewInventory(commands, services.DefinitionsDir, services.EnabledDir, "/proc")
 	serviceController := daemon.NewServiceController(authorizer, serviceInventory, services.NewManager(commands, services.DefinitionsDir, services.EnabledDir))
-	configController := daemon.NewXBPSConfigController(authorizer, xbpsconfig.NewManager("/etc/xbps.d"))
+	configController := daemon.NewXBPSConfigController(authorizer, xbpsconfig.NewManager("/etc/xbps.d", "/usr/share/xbps.d"))
 	systemConfigController := daemon.NewSystemConfigController(authorizer, systemconfig.NewManager(commands, "/etc/xbps.d", "/usr/share/xbps.d", "/etc/samba/smb.conf", "/etc/fstab"))
 	accountController := daemon.NewAccountController(authorizer, accounts.NewManager(commands))
 	firewallInventory := firewall.NewInventory(commands)

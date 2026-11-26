@@ -6,7 +6,7 @@ func TestSystemConfigRequestValidation(t *testing.T) {
 	valid := []SystemConfigRequest{
 		{Version: APIVersion, Operation: MirrorUse, Value: "https://repo-fast.example.org/"},
 		{Version: APIVersion, Operation: MirrorReset},
-		{Version: APIVersion, Operation: RepositoryAdd, Value: "https://repo.example.org/current", TrustConfirmed: true},
+		{Version: APIVersion, Operation: RepositoryAdd, Value: "https://repo.example.org/current", Path: "custom.conf", TrustConfirmed: true},
 		{Version: APIVersion, Operation: SambaAdd, Value: "Media", Path: "/srv/media", Comment: "Shared media", Browseable: true, FollowSymlinks: true, ValidUsers: "alice, @media", WriteList: "@editors", ReadList: "bob", ForceUser: "media", ForceGroup: "media", CreateMask: "0770", DirectoryMask: "0775"},
 		{Version: APIVersion, Operation: SambaEdit, Value: "Media", OldValue: "Old Media", Path: "/srv/media"},
 		{Version: APIVersion, Operation: SambaRemove, Value: "Media"},
@@ -25,6 +25,7 @@ func TestSystemConfigRequestValidation(t *testing.T) {
 	}
 	invalid := []SystemConfigRequest{
 		{Version: APIVersion, Operation: RepositoryAdd, Value: "https://repo.example.org/current"},
+		{Version: APIVersion, Operation: RepositoryAdd, Value: "https://repo.example.org/current", Path: "../evil.conf", TrustConfirmed: true},
 		{Version: APIVersion, Operation: MirrorUse, Value: "http://insecure.example.org"},
 		{Version: APIVersion, Operation: SambaAdd, Value: "bad\nname", Path: "/srv/data"},
 		{Version: APIVersion, Operation: SambaEdit, Value: "Media", OldValue: "", Path: "/srv/data"},

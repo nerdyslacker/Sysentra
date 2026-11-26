@@ -229,12 +229,22 @@ select option {
 }
 
 .repository-grid {
-  grid-template-columns: auto 3rem minmax(0, 1fr) auto auto;
+  grid-template-columns: 3rem 4rem minmax(8rem, 0.8fr) minmax(10rem, 2fr) minmax(8.5rem, auto);
+  align-items: center;
+  column-gap: 0.5rem;
 }
 
 .xbps-config-grid {
-  grid-template-columns: 8rem minmax(10rem, 1fr) minmax(12rem, 1.2fr) auto;
-  gap: 0.75rem;
+  grid-template-columns: 9rem minmax(10rem, 1fr) minmax(12rem, 1.2fr) 8.5rem;
+  align-items: center;
+  column-gap: 0.75rem;
+}
+
+.repository-grid > *,
+.xbps-config-grid > * {
+  min-width: 0;
+  justify-self: start;
+  text-align: left;
 }
 
 .mirror-grid {
@@ -388,10 +398,10 @@ select option {
     display: none;
   }
   .repository-grid {
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: 3rem minmax(7rem, 0.8fr) minmax(0, 2fr) minmax(8.5rem, auto);
   }
   .xbps-config-grid {
-    grid-template-columns: 8rem minmax(8rem, 1fr) auto;
+    grid-template-columns: 9rem minmax(8rem, 1fr) 8.5rem;
   }
   .xbps-config-origin {
     display: none;

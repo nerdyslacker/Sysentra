@@ -155,6 +155,7 @@
   let ruleKind = 'ignorepkg';
   let ruleValue = '';
   let ruleOldValue = '';
+	let ruleFile = '';
   let ruleSaving = false;
   let ruleError = '';
   let configDialog: HTMLDialogElement;
@@ -234,9 +235,9 @@
   $: filteredServices = services.filter((item) => (serviceFilter === 'all' || (serviceFilter === 'active' && item.status === 'Running') || (serviceFilter === 'disabled' && !item.enabled)) && [item.name, item.status, item.command, String(item.pid)].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredKernels = kernels.filter((item) => [item.package, item.version, item.series, item.type, item.size, item.installDate, item.running ? 'running current' : item.installed ? 'installed' : 'available'].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: purgeableKernelImages = kernelStatus?.images.filter((image) => image.canPurge) ?? [];
-  $: filteredRepositories = repositories.filter((item) => [item.url, item.origin].some((value) => value.toLowerCase().includes(normalizedQuery)));
+  $: filteredRepositories = repositories.filter((item) => [item.name, item.url, item.origin].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredFlatpakRemotes = flatpakRemotes.filter((item) => [item.name, item.title, item.url].some((value) => value.toLowerCase().includes(normalizedQuery)));
-  $: filteredXBPSConfigRules = xbpsConfigRules.filter((item) => [item.kind, item.value, item.origin].some((value) => value.toLowerCase().includes(normalizedQuery)));
+  $: filteredXBPSConfigRules = xbpsConfigRules.filter((item) => [item.kind, item.value, item.file, item.origin].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: mirrorRegions = ['All', ...new Set(mirrors.map((item) => item.region))];
   $: filteredMirrors = mirrors.filter((item) => (!mirrorTier || item.tier === mirrorTier) && (mirrorRegion === 'All' || item.region === mirrorRegion) && [item.url, item.region, item.location, item.status].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredFirmwareDevices = firmwareDevices.filter((item) => [item.name, item.vendor, item.summary, item.version, item.newVersion, item.id].some((value) => value.toLowerCase().includes(normalizedQuery)));
@@ -921,6 +922,7 @@
     ruleKind = rule ? ruleKindID(rule) : 'ignorepkg';
     ruleValue = rule?.value ?? '';
     ruleOldValue = rule?.value ?? '';
+		ruleFile = rule?.file ?? '';
     ruleError = '';
     ruleDialog.showModal();
   }
@@ -930,7 +932,7 @@
     ruleSaving = true;
     ruleError = '';
     try {
-      xbpsConfigRules = await ChangeXBPSRule(ruleOperation, ruleKind, ruleValue.trim(), ruleOperation === 'edit' ? ruleOldValue : '');
+      xbpsConfigRules = await ChangeXBPSRule(ruleOperation, ruleKind, ruleValue.trim(), ruleOperation === 'edit' ? ruleOldValue : '', ruleFile);
       ruleDialog.close();
     } catch (error) {
       ruleError = error instanceof Error ? error.message : String(error);
@@ -942,10 +944,10 @@
   function confirmRuleRemoval(rule: XBPSConfigRuleView) {
     openConfirmation(
       'Remove XBPS rule',
-      `Remove ${rule.kind.toLowerCase()} ${rule.value} from Sysentra-managed configuration.`,
+      `Remove ${rule.kind.toLowerCase()} ${rule.value} from ${rule.file}.`,
       true,
       '',
-      async () => { xbpsConfigRules = await ChangeXBPSRule('remove', ruleKindID(rule), rule.value, ''); }
+      async () => { xbpsConfigRules = await ChangeXBPSRule('remove', ruleKindID(rule), rule.value, '', rule.file); }
     );
   }
 
@@ -1086,7 +1088,7 @@
 
   function confirmRepositoryToggle(repository: RepositoryView) {
     const action = repository.enabled ? 'Disable' : 'Enable';
-    openConfirmation(`${action} repository`, `${action} ${repository.url}. Disabling will comment its repository entry; enabling will restore it.`, false, '', async () => { repositories = await ChangeRepository(action.toLowerCase(), repository.url, '', false); });
+    openConfirmation(`${action} repository`, `${action} ${repository.url}. Disabling will comment its repository entry; enabling will restore it.`, false, '', async () => { repositories = await ChangeRepository(action.toLowerCase(), repository.name, repository.url, '', false); });
   }
 
   function sambaPrincipals(value: string, groupsOnly: boolean) {
@@ -1135,7 +1137,7 @@
     configOperation = operation;
     configValue = kind === 'samba' && item ? (item as SambaShareView).name : kind === 'nfs' && item ? (item as NFSMountView).source : (item as RepositoryView | FlatpakRemoteView | null)?.url ?? '';
     configOldValue = configValue;
-    configName = kind === 'flatpak' && item ? (item as FlatpakRemoteView).name : '';
+    configName = (kind === 'flatpak' || kind === 'repository') && item ? (item as FlatpakRemoteView | RepositoryView).name : '';
     configPath = kind === 'samba' && item ? (item as SambaShareView).path : kind === 'nfs' && item ? (item as NFSMountView).target : '';
     configOldPath = configPath;
     configType = kind === 'nfs' && item ? (item as NFSMountView).type : 'nfs4';
@@ -1179,7 +1181,7 @@
     configSaving = true;
     configError = '';
     try {
-      if (configKind === 'repository') repositories = await ChangeRepository(configOperation, configValue.trim(), configOldValue, configTrustConfirmed);
+      if (configKind === 'repository') repositories = await ChangeRepository(configOperation, configName.trim(), configValue.trim(), configOldValue, configTrustConfirmed);
       if (configKind === 'flatpak') flatpakRemotes = await ChangeFlatpakRemote(configOperation, configName.trim(), configValue.trim());
       if (configKind === 'samba') sambaServer = await ChangeSambaShare({ operation: configOperation, name: configValue.trim(), oldName: configOldValue, path: configPath.trim(), comment: configComment.trim(), browseable: configBrowseable, readOnly: configReadOnly, guestOK: configGuestOK, followSymlinks: configFollowSymlinks, wideLinks: configWideLinks, validUsers: sambaAccessList(configValidUsers, configValidGroups), writeList: sambaAccessList(configWriteList, configWriteGroups), readList: sambaAccessList(configReadList, configReadGroups), forceUser: configForceUser.trim(), forceGroup: configForceGroup.trim(), createMask: configCreateMask, directoryMask: configDirectoryMask });
       if (configKind === 'nfs') nfsMounts = await ChangeNFSMount(configOperation, configValue.trim(), configOldValue, configPath.trim(), configOldPath, configType, configOptions.trim());
@@ -1326,7 +1328,7 @@
   }
 
   function confirmRepositoryRemoval(repository: RepositoryView) {
-    openConfirmation('Remove repository', `Remove ${repository.url} from Sysentra-managed XBPS configuration. Installed packages are not removed.`, true, '', async () => { repositories = await ChangeRepository('remove', repository.url, '', false); });
+    openConfirmation('Remove repository', `Remove ${repository.url} from ${repository.name}. Installed packages are not removed.`, true, '', async () => { repositories = await ChangeRepository('remove', repository.name, repository.url, '', false); });
   }
 
   function confirmFlatpakRemoteToggle(remote: FlatpakRemoteView) {
@@ -1657,15 +1659,14 @@
       {:else if activeView === 'Repositories'}
         <div class="grid min-h-0 gap-3 overflow-auto"><section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="repositories-heading">
           <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="repositories-heading" class="font-semibold">Effective XBPS repositories</h2><p class="text-xs text-surface-500">Listed in XBPS priority order.</p></div><div class="ml-auto flex gap-2"><button class="btn preset-tonal" type="button" on:click={() => openConfigDialog('repository')}>Add repository</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
+			<div class="repository-grid package-table-header grid gap-2 border-b border-surface-300-700 px-3 py-2 text-left text-xs font-semibold"><span>Active</span><span class="repository-priority">Priority</span><span>Name</span><span>URL</span><span>Actions</span></div>
           <div class="system-table-body">{#each filteredRepositories as repository}
             <div class="repository-grid grid items-center gap-2 border-b border-surface-200-800 px-3 py-2 text-sm">
-              <button type="button" role="switch" aria-checked={repository.enabled} aria-label={`${repository.enabled ? 'Disable' : 'Enable'} ${repository.url}`} disabled={!repository.mutable} title={repository.mutable ? '' : 'Only Sysentra-owned repositories can be changed'} class="relative h-5 w-9 rounded-full disabled:opacity-50 {repository.enabled ? 'bg-success-600' : 'bg-surface-400'}" on:click={() => confirmRepositoryToggle(repository)}><span class="absolute top-0.5 size-4 rounded-full bg-white transition-[left] {repository.enabled ? 'left-[1.125rem]' : 'left-0.5'}"></span></button>
-              <span class="repository-priority">#{repository.priority}</span><span class="truncate font-mono text-xs">{repository.url}</span>
-              <button type="button" class="btn preset-tonal" disabled={!repository.mutable} title={repository.mutable ? 'Edit this Sysentra-owned repository' : 'Only app-owned repository files may be edited'} on:click={() => openConfigDialog('repository', 'edit', repository)}>Edit</button>
-              <button type="button" class="btn border-error-500/50 text-error-700-300 hover:bg-error-500/10" disabled={!repository.mutable} title={repository.mutable ? 'Remove this configured repository' : 'Void vendor repositories cannot be removed here'} on:click={() => confirmRepositoryRemoval(repository)}>Remove</button>
+              <button type="button" role="switch" aria-checked={repository.enabled} aria-label={`${repository.enabled ? 'Disable' : 'Enable'} ${repository.url}`} disabled={!repository.mutable} title={repository.mutable ? '' : 'The configuration file for this repository could not be identified'} class="relative h-5 w-9 rounded-full disabled:opacity-50 {repository.enabled ? 'bg-success-600' : 'bg-surface-400'}" on:click={() => confirmRepositoryToggle(repository)}><span class="absolute top-0.5 size-4 rounded-full bg-white transition-[left] {repository.enabled ? 'left-[1.125rem]' : 'left-0.5'}"></span></button>
+              <span class="repository-priority">#{repository.priority}</span><span class="truncate font-mono text-xs" title={repository.name}>{repository.name || 'Unknown'}</span><span class="truncate font-mono text-xs" title={repository.url}>{repository.url}</span>
+              <span class="flex gap-1"><button type="button" class="btn preset-tonal" disabled={!repository.mutable} title={repository.mutable ? `Edit ${repository.name}` : 'The configuration file could not be identified'} on:click={() => openConfigDialog('repository', 'edit', repository)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300 hover:bg-error-500/10" disabled={!repository.mutable} title={repository.mutable ? `Remove from ${repository.name}` : 'The configuration file could not be identified'} on:click={() => confirmRepositoryRemoval(repository)}>Remove</button></span>
             </div>
           {/each}</div>
-          <footer class="p-3 text-xs text-surface-500">Only Sysentra-managed entries can be changed.</footer>
         </section>
         {#if flatpakSourceEnabled}<section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="flatpak-remotes-heading">
           <header class="flex items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="flatpak-remotes-heading" class="font-semibold">User Flatpak remotes</h2><p class="text-xs text-surface-500">Package sources for the current user.</p></div><button class="btn preset-tonal ml-auto" type="button" on:click={() => openConfigDialog('flatpak')}>Add remote</button></header>
@@ -1675,9 +1676,9 @@
       {:else if activeView === 'XBPS Config'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="xbps-config-heading">
           <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="xbps-config-heading" class="font-semibold">Advanced XBPS configuration</h2><p class="text-xs text-surface-500">Ignored packages and virtual package mappings from the effective XBPS configuration.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openRuleDialog()}>Add rule</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
-          <div class="xbps-config-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Type</span><span>Value</span><span class="xbps-config-origin">Configuration file</span><span>Actions</span></div>
+          <div class="xbps-config-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-left text-xs font-semibold"><span>Type</span><span>Value</span><span class="xbps-config-origin">Configuration file</span><span>Actions</span></div>
           <div class="system-table-body">{#each filteredXBPSConfigRules as rule}
-            <div class="xbps-config-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="w-fit rounded-full border border-primary-500/40 bg-primary-500/10 px-2 py-0.5 text-xs text-primary-700-300">{rule.kind}</span><span class="truncate font-mono text-xs" title={rule.value}>{rule.value}</span><span class="xbps-config-origin truncate font-mono text-xs text-surface-500" title={rule.origin}>{rule.origin}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" disabled={!rule.mutable} title={rule.mutable ? 'Edit this Sysentra-owned rule' : 'Only Sysentra-owned rules may be edited'} on:click={() => openRuleDialog('edit', rule)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" disabled={!rule.mutable} title={rule.mutable ? 'Remove this Sysentra-owned rule' : 'Vendor and user-owned files are read-only'} on:click={() => confirmRuleRemoval(rule)}>Remove</button></span></div>
+            <div class="xbps-config-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="w-fit rounded-full border border-primary-500/40 bg-primary-500/10 px-2 py-0.5 text-xs text-primary-700-300">{rule.kind}</span><span class="truncate font-mono text-xs" title={rule.value}>{rule.value}</span><span class="xbps-config-origin truncate font-mono text-xs text-surface-500" title={rule.origin}>{rule.file}</span><span class="flex gap-1"><button type="button" class="btn preset-tonal" disabled={!rule.mutable} title={rule.mutable ? `Edit ${rule.file}` : 'The configuration file could not be identified'} on:click={() => openRuleDialog('edit', rule)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" disabled={!rule.mutable} title={rule.mutable ? `Remove from ${rule.file}` : 'The configuration file could not be identified'} on:click={() => confirmRuleRemoval(rule)}>Remove</button></span></div>
           {:else}<p class="p-5 text-sm text-surface-500" role="status">No ignored packages or virtual package mappings found.</p>{/each}</div>
           <footer class="p-3 text-xs text-surface-500">Ignored packages satisfy dependencies without installation. Virtual mappings replace a virtual name with a package.</footer>
         </section>
@@ -1939,7 +1940,7 @@
     <form on:submit|preventDefault={saveConfig}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="config-title" class="font-semibold">{configOperation === 'edit' ? `Edit ${configKind === 'flatpak' ? 'Flatpak remote' : configKind === 'samba' ? 'Samba share' : configKind === 'nfs' ? 'NFS mount' : 'repository'}` : configKind === 'repository' ? 'Add repository' : configKind === 'flatpak' ? 'Add Flatpak remote' : configKind === 'samba' ? 'Add Samba share' : 'Add NFS mount'}</h2></header>
       <div class="max-h-[calc(100vh-10rem)] space-y-3 overflow-y-auto p-4">
-        {#if configKind === 'flatpak'}<label class="block text-sm"><span class="mb-1 block font-medium">Remote name</span><input class="input app-input-surface w-full" bind:value={configName} placeholder="flathub" disabled={configOperation === 'edit'} required /></label>{/if}
+        {#if configKind === 'flatpak' || configKind === 'repository'}<label class="block text-sm"><span class="mb-1 block font-medium">{configKind === 'flatpak' ? 'Remote name' : 'Configuration file'}</span><input class="input app-input-surface w-full font-mono" bind:value={configName} placeholder={configKind === 'flatpak' ? 'flathub' : 'custom-repository.conf'} disabled={configOperation === 'edit'} pattern={configKind === 'repository' ? '[A-Za-z0-9][A-Za-z0-9._-]*\\.conf' : undefined} required /></label>{/if}
         <label class="block text-sm"><span class="mb-1 block font-medium">{configKind === 'repository' || configKind === 'flatpak' ? 'HTTPS repository URL' : configKind === 'samba' ? 'Share name' : 'NFS source'}</span><input class="input app-input-surface w-full" bind:value={configValue} on:input={() => { configTrustConfirmed = false; configRepositoryKey = null; configKeyURL = ''; }} placeholder={configKind === 'repository' ? 'https://repo.example.org/current' : configKind === 'flatpak' ? 'https://flathub.org/repo/flathub.flatpakrepo' : configKind === 'samba' ? 'Media' : 'server:/data'} required /></label>
         {#if configKind === 'samba' || configKind === 'nfs'}<label class="block text-sm"><span class="mb-1 block font-medium">{configKind === 'samba' ? 'Local directory' : 'Mount point'}</span><input class="input app-input-surface w-full font-mono" bind:value={configPath} placeholder={configKind === 'samba' ? '/srv/media' : '/mnt/data'} required /></label>{/if}
         {#if configKind === 'samba'}
@@ -1955,7 +1956,7 @@
         {#if configKind === 'repository'}<p class="text-xs text-surface-500">Sysentra needs administrator authorization to update this configuration.</p>{/if}
         {#if configError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{configError}</p>{/if}
       </div>
-      <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={configSaving} on:click={() => configDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={configSaving || !configValue.trim() || (configKind === 'repository' && !configTrustConfirmed) || (configKind === 'flatpak' && !configName.trim()) || ((configKind === 'samba' || configKind === 'nfs') && !configPath.trim())}>{configSaving ? 'Saving…' : 'Save'}</button></footer>
+      <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={configSaving} on:click={() => configDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={configSaving || !configValue.trim() || (configKind === 'repository' && (!configName.trim() || !configTrustConfirmed)) || (configKind === 'flatpak' && !configName.trim()) || ((configKind === 'samba' || configKind === 'nfs') && !configPath.trim())}>{configSaving ? 'Saving…' : 'Save'}</button></footer>
     </form>
   </dialog>
 

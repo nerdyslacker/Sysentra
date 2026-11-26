@@ -8,7 +8,7 @@ import (
 
 const (
 	APIVersion       = 1
-	HelperAPIVersion = 21
+	HelperAPIVersion = 22
 )
 
 type Operation string

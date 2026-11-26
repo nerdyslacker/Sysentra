@@ -12,18 +12,41 @@ import (
 
 const ManagedFile = "sysentra-rules.conf"
 
-type Manager struct{ dir string }
+type Manager struct {
+	dir       string
+	vendorDir string
+}
 
-func NewManager(dir string) *Manager { return &Manager{dir: dir} }
+func NewManager(dir string, vendorDir ...string) *Manager {
+	vendor := "/usr/share/xbps.d"
+	if len(vendorDir) > 0 {
+		vendor = vendorDir[0]
+	}
+	return &Manager{dir: dir, vendorDir: vendor}
+}
 
 func (m *Manager) Change(request security.XBPSRuleRequest) error {
 	if err := request.Validate(); err != nil {
 		return err
 	}
-	path := filepath.Join(m.dir, ManagedFile)
+	name := request.File
+	if request.Operation == security.RuleAdd {
+		name = ManagedFile
+	}
+	path := filepath.Join(m.dir, name)
 	contents, err := readManagedFile(path)
 	if err != nil {
 		return err
+	}
+	localContents := contents
+	if contents == nil && request.Operation != security.RuleAdd {
+		contents, err = readManagedFile(filepath.Join(m.vendorDir, name))
+		if err != nil {
+			return err
+		}
+		if contents == nil {
+			return errors.New("XBPS configuration file was not found")
+		}
 	}
 	lines := strings.Split(strings.TrimSuffix(string(contents), "\n"), "\n")
 	if len(contents) == 0 {
@@ -63,8 +86,8 @@ func (m *Manager) Change(request security.XBPSRuleRequest) error {
 		}
 		lines = append(lines[:index], lines[index+1:]...)
 	}
-	if len(contents) > 0 {
-		if err := atomicWrite(path+".bak", contents); err != nil {
+	if len(localContents) > 0 {
+		if err := atomicWrite(path+".bak", localContents); err != nil {
 			return fmt.Errorf("back up XBPS rules: %w", err)
 		}
 	}

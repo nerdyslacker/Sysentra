@@ -33,6 +33,7 @@ const (
 )
 
 var shareNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _.-]{0,63}$`)
+var xbpsConfigFilePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.conf$`)
 var sambaPrincipalPattern = regexp.MustCompile(`^[@+&]?[A-Za-z0-9_.-]+\$?$`)
 var sambaAccountPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*\$?$`)
 
@@ -71,16 +72,16 @@ func (r SystemConfigRequest) Validate() error {
 	}
 	switch r.Operation {
 	case RepositoryAdd:
-		if !validHTTPSURL(r.Value) || !r.TrustConfirmed {
-			return errors.New("a valid HTTPS URL and explicit repository trust confirmation are required")
+		if !validHTTPSURL(r.Value) || !validXBPSConfigFile(r.Path) || !r.TrustConfirmed {
+			return errors.New("a valid HTTPS URL, configuration filename, and explicit repository trust confirmation are required")
 		}
 	case RepositoryRemove, RepositoryEnable, RepositoryDisable, MirrorUse:
-		if !validHTTPSURL(r.Value) {
-			return errors.New("a valid HTTPS URL is required")
+		if !validHTTPSURL(r.Value) || (r.Operation != MirrorUse && !validXBPSConfigFile(r.Path)) {
+			return errors.New("a valid HTTPS URL and configuration filename are required")
 		}
 	case RepositoryEdit:
-		if !validHTTPSURL(r.Value) || !validHTTPSURL(r.OldValue) || r.Value == r.OldValue || !r.TrustConfirmed {
-			return errors.New("distinct valid repository URLs and explicit trust confirmation are required")
+		if !validHTTPSURL(r.Value) || !validHTTPSURL(r.OldValue) || r.Value == r.OldValue || !validXBPSConfigFile(r.Path) || !r.TrustConfirmed {
+			return errors.New("distinct valid repository URLs, a configuration filename, and explicit trust confirmation are required")
 		}
 	case MirrorReset:
 		if r.Value != "" {
@@ -122,6 +123,10 @@ func (r SystemConfigRequest) Validate() error {
 		return errors.New("unsupported system configuration operation")
 	}
 	return nil
+}
+
+func validXBPSConfigFile(name string) bool {
+	return xbpsConfigFilePattern.MatchString(name) && !strings.Contains(name, "..") && filepath.Base(name) == name
 }
 
 func validSambaOptions(request SystemConfigRequest) bool {

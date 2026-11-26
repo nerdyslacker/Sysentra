@@ -30,7 +30,7 @@ func TestListUsesLocalFileInsteadOfSameNamedVendorFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rules) != 2 || rules[0].Value != "local" || rules[0].Mutable || rules[1].Value != "cron-daemon:dcron" || !rules[1].Mutable {
+	if len(rules) != 2 || rules[0].Value != "local" || rules[0].File != "policy.conf" || !rules[0].Mutable || rules[1].Value != "cron-daemon:dcron" || rules[1].File != ManagedFile || !rules[1].Mutable {
 		t.Fatalf("unexpected rules: %#v", rules)
 	}
 }

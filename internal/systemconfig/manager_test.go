@@ -76,7 +76,7 @@ func TestManagerAddsRepositorySambaAndNFS(t *testing.T) {
 	fstab := filepath.Join(root, "fstab")
 	manager := NewManager(successfulRunner{}, config, filepath.Join(root, "vendor"), samba, fstab)
 	requests := []security.SystemConfigRequest{
-		{Version: security.APIVersion, Operation: security.RepositoryAdd, Value: "https://repo.example.org/current", TrustConfirmed: true},
+		{Version: security.APIVersion, Operation: security.RepositoryAdd, Value: "https://repo.example.org/current", Path: "games.conf", TrustConfirmed: true},
 		{Version: security.APIVersion, Operation: security.SambaAdd, Value: "Media", Path: "/srv/media", Comment: "Shared media", Browseable: true, GuestOK: true, FollowSymlinks: true, ValidUsers: "alice, @media", WriteList: "@editors", ReadList: "bob", ForceUser: "media", ForceGroup: "media", CreateMask: "0770", DirectoryMask: "0775"},
 		{Version: security.APIVersion, Operation: security.NFSAdd, Value: "server:/data", Path: filepath.Join(root, "mnt"), Type: "nfs4", Options: "rw,_netdev"},
 	}
@@ -86,9 +86,9 @@ func TestManagerAddsRepositorySambaAndNFS(t *testing.T) {
 		}
 	}
 	checks := map[string]string{
-		filepath.Join(config, managedRepositories): "repository=https://repo.example.org/current",
-		samba: "[Media]",
-		fstab: "server:/data",
+		filepath.Join(config, "games.conf"): "repository=https://repo.example.org/current",
+		samba:                               "[Media]",
+		fstab:                               "server:/data",
 	}
 	for path, want := range checks {
 		contents, err := os.ReadFile(path)
@@ -101,6 +101,36 @@ func TestManagerAddsRepositorySambaAndNFS(t *testing.T) {
 		if !strings.Contains(string(sambaContents), want) {
 			t.Fatalf("samba config missing %q: %s", want, sambaContents)
 		}
+	}
+}
+
+func TestManagerShadowsVendorRepositoryBeforeEditing(t *testing.T) {
+	root := t.TempDir()
+	local := filepath.Join(root, "etc")
+	vendor := filepath.Join(root, "share")
+	if err := os.MkdirAll(local, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(vendor, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	vendorPath := filepath.Join(vendor, "community.conf")
+	original := "repository=https://old.example.org/current\nignorepkg=keep-me\n"
+	if err := os.WriteFile(vendorPath, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(successfulRunner{}, local, vendor, filepath.Join(root, "smb.conf"), filepath.Join(root, "fstab"))
+	request := security.SystemConfigRequest{Version: security.APIVersion, Operation: security.RepositoryEdit, Value: "https://new.example.org/current", OldValue: "https://old.example.org/current", Path: "community.conf", TrustConfirmed: true}
+	if err := manager.Change(request); err != nil {
+		t.Fatal(err)
+	}
+	localContents, err := os.ReadFile(filepath.Join(local, "community.conf"))
+	if err != nil || !strings.Contains(string(localContents), "repository=https://new.example.org/current") || !strings.Contains(string(localContents), "ignorepkg=keep-me") {
+		t.Fatalf("local shadow=%q err=%v", localContents, err)
+	}
+	vendorContents, _ := os.ReadFile(vendorPath)
+	if string(vendorContents) != original {
+		t.Fatalf("vendor file changed: %q", vendorContents)
 	}
 }
 

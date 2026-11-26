@@ -61,14 +61,22 @@ func (m *Manager) Change(request security.SystemConfigRequest) error {
 }
 
 func (m *Manager) changeRepository(request security.SystemConfigRequest) error {
-	path := filepath.Join(m.configurationDir, managedRepositories)
-	contents, err := readRegular(path)
+	path := filepath.Join(m.configurationDir, request.Path)
+	contents, source, err := m.repositoryConfig(request.Path)
 	if err != nil {
 		return err
+	}
+	if request.Operation == security.RepositoryAdd && source != "" {
+		return errors.New("repository configuration file already exists")
+	}
+	if request.Operation != security.RepositoryAdd && source == "" {
+		return errors.New("repository configuration file was not found")
 	}
 	lines := nonemptyLines(contents)
 	if len(lines) == 0 {
 		lines = []string{managedMarker}
+	} else if lines[0] != managedMarker {
+		lines = append([]string{managedMarker}, lines...)
 	}
 	oldURL := request.Value
 	if request.Operation == security.RepositoryEdit {
@@ -77,15 +85,15 @@ func (m *Manager) changeRepository(request security.SystemConfigRequest) error {
 	index := repositoryLine(lines, oldURL)
 	switch request.Operation {
 	case security.RepositoryAdd:
-		if index >= 0 {
+		if index >= 0 || m.repositoryExists(request.Value, request.Path) {
 			return errors.New("repository already exists")
 		}
 		lines = append(lines, "repository="+request.Value)
 	case security.RepositoryEdit:
 		if index < 0 {
-			return errors.New("repository is not managed by Sysentra")
+			return errors.New("repository was not found in the selected configuration file")
 		}
-		if repositoryLine(lines, request.Value) >= 0 {
+		if repositoryLine(lines, request.Value) >= 0 || m.repositoryExists(request.Value, request.Path) {
 			return errors.New("replacement repository already exists")
 		}
 		prefix := "repository="
@@ -95,12 +103,12 @@ func (m *Manager) changeRepository(request security.SystemConfigRequest) error {
 		lines[index] = prefix + request.Value
 	case security.RepositoryRemove:
 		if index < 0 {
-			return errors.New("repository is not managed by Sysentra")
+			return errors.New("repository was not found in the selected configuration file")
 		}
 		lines = append(lines[:index], lines[index+1:]...)
 	case security.RepositoryEnable, security.RepositoryDisable:
 		if index < 0 {
-			return errors.New("repository is not managed by Sysentra")
+			return errors.New("repository was not found in the selected configuration file")
 		}
 		prefix := "repository="
 		if request.Operation == security.RepositoryDisable {
@@ -109,6 +117,40 @@ func (m *Manager) changeRepository(request security.SystemConfigRequest) error {
 		lines[index] = prefix + request.Value
 	}
 	return writeWithBackup(path, []byte(strings.Join(lines, "\n")+"\n"))
+}
+
+func (m *Manager) repositoryConfig(name string) ([]byte, string, error) {
+	local := filepath.Join(m.configurationDir, name)
+	contents, err := readRegular(local)
+	if err != nil || contents != nil {
+		return contents, local, err
+	}
+	vendor := filepath.Join(m.vendorDir, name)
+	contents, err = readRegular(vendor)
+	if err != nil || contents != nil {
+		return contents, vendor, err
+	}
+	return nil, "", nil
+}
+
+func (m *Manager) repositoryExists(url, excludedFile string) bool {
+	files := map[string]string{}
+	for _, dir := range []string{m.vendorDir, m.configurationDir} {
+		paths, _ := filepath.Glob(filepath.Join(dir, "*.conf"))
+		for _, path := range paths {
+			files[filepath.Base(path)] = path
+		}
+	}
+	for name, path := range files {
+		if name == excludedFile {
+			continue
+		}
+		contents, err := readRegular(path)
+		if err == nil && repositoryLine(nonemptyLines(contents), url) >= 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func repositoryLine(lines []string, url string) int {
