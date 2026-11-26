@@ -43,6 +43,7 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(details, /Provides &amp; Requires/);
   assert.match(details, /unused dependencies/);
   assert.match(details, /Force reinstall/);
+  assert.match(details, /selected\.newVersion[\s\S]*Update package[\s\S]*'update'/);
   assert.match(details, /Rerun post-install configuration/);
   assert.match(details, /false, 'reconfigure'/);
   assert.match(details, /false, 'downgrade', version/);

@@ -64,7 +64,10 @@ export function updatePackageAfterTransaction(pkg, operation, changedPackages) {
   }
   if (operation === 'hold' || operation === 'unhold') return { ...pkg, held: operation === 'hold' };
   if (operation === 'repo-lock' || operation === 'repo-unlock') return { ...pkg, repoLocked: operation === 'repo-lock' };
-  if (operation === 'install' || operation === 'reinstall' || operation === 'reconfigure' || operation === 'update') {
+  if (operation === 'update') {
+    return { ...pkg, installed: true, status: 'Installed', version: pkg.newVersion || pkg.version, newVersion: '' };
+  }
+  if (operation === 'install' || operation === 'reinstall' || operation === 'reconfigure') {
     return { ...pkg, installed: true, status: 'Installed', newVersion: '' };
   }
   return pkg;

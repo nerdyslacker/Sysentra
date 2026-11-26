@@ -57,6 +57,7 @@
           {#if !selected.installed}
             <button type="button" class="btn preset-filled-primary-500" on:click={() => action('Install package', `Install ${selected.name}.`, false, 'install')}>Install</button>
           {:else}
+            {#if selected.newVersion}<button type="button" class="btn preset-filled-primary-500" on:click={() => action('Update package', `Update ${selected.name} from ${selected.version} to ${selected.newVersion}.`, false, 'update')}>Update</button>{/if}
             <button type="button" class="btn bg-error-600 text-white hover:bg-error-700" on:click={() => action('Remove package', `Remove ${selected.name}.`, true, 'remove')}>Remove</button>
             {#if selected.backendId === 'xbps'}
               <button type="button" class="btn border-error-500/50 text-error-700-300 hover:bg-error-500/10" title="Remove with unused dependencies" on:click={() => action('Remove package and unused dependencies', `Remove ${selected.name} and dependencies no longer needed by another package.`, true, 'purge')}>Purge</button>

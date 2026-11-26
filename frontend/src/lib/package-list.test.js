@@ -83,6 +83,10 @@ test('updates selected package state after a transaction', () => {
   const added = updatePackageAfterTransaction(available, 'install', ['firefox']);
   assert.equal(added.installed, true);
   assert.equal(added.status, 'Installed');
+  const updated = updatePackageAfterTransaction({ ...installed, newVersion: '131_1', status: 'Update available' }, 'update', ['firefox']);
+  assert.equal(updated.version, '131_1');
+  assert.equal(updated.newVersion, '');
+  assert.equal(updated.status, 'Installed');
   assert.equal(updatePackageAfterTransaction(installed, 'force-remove', ['firefox']).installed, false);
   assert.equal(updatePackageAfterTransaction(installed, 'remove', ['bash']), installed);
 });
