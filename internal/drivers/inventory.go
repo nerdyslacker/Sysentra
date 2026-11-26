@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"sysentra/internal/runner"
@@ -57,6 +58,7 @@ func (i *Inventory) List(ctx context.Context) (Catalog, error) {
 		}
 	}
 	catalog.Devices = append(catalog.Devices, usb...)
+	catalog.Devices = append(catalog.Devices, scanSDIO("/sys")...)
 	rules, err := parseRules(defaultRules)
 	if err != nil {
 		catalog.Warnings = append(catalog.Warnings, "Driver evidence database could not be read")
@@ -64,7 +66,9 @@ func (i *Inventory) List(ctx context.Context) (Catalog, error) {
 		enrichRecommendations(ctx, i.runner, rules, catalog.Devices)
 	}
 	catalog.Modules = activeModules(catalog.Devices)
-	catalog.Diagnostics = driverDiagnostics(ctx, i.runner)
+	diagnostics, warnings := driverDiagnostics(ctx, i.runner)
+	catalog.Diagnostics = diagnostics
+	catalog.Warnings = append(catalog.Warnings, warnings...)
 	return catalog, nil
 }
 
@@ -141,6 +145,40 @@ func scanUSB(root string) []Device {
 	return devices
 }
 
+func scanSDIO(root string) []Device {
+	paths, _ := filepath.Glob(filepath.Join(root, "bus", "sdio", "devices", "*"))
+	var devices []Device
+	for _, path := range paths {
+		vendor, vendorOK := sdioID(readTrimmed(filepath.Join(path, "vendor")))
+		product, productOK := sdioID(readTrimmed(filepath.Join(path, "device")))
+		if !vendorOK || !productOK {
+			continue
+		}
+		id := vendor + ":" + product
+		driver := ""
+		if target, err := filepath.EvalSymlinks(filepath.Join(path, "driver")); err == nil {
+			driver = filepath.Base(target)
+		}
+		category := "Other"
+		if strings.EqualFold(strings.TrimPrefix(readTrimmed(filepath.Join(path, "class")), "0x"), "07") {
+			category = "Wi-Fi"
+		}
+		devices = append(devices, Device{Category: category, Bus: "SDIO", ID: id, Name: "SDIO device " + id, Driver: driver, Modalias: readTrimmed(filepath.Join(path, "modalias")), Evidence: "SDIO sysfs device and driver binding"})
+	}
+	return devices
+}
+
+func sdioID(value string) (string, bool) {
+	value = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), "0x")
+	if len(value) != 4 {
+		return "", false
+	}
+	if _, err := strconv.ParseUint(value, 16, 16); err != nil {
+		return "", false
+	}
+	return strings.ToUpper(value), true
+}
+
 func usbInterfaceData(root, device string) ([]string, []string) {
 	interfaces, _ := filepath.Glob(filepath.Join(root, "bus", "usb", "devices", device+":*"))
 	driverSet, aliasSet := map[string]bool{}, map[string]bool{}
@@ -191,21 +229,78 @@ func activeModules(devices []Device) []Module {
 	return modules
 }
 
-func driverDiagnostics(ctx context.Context, command runner.Runner) []string {
+func driverDiagnostics(ctx context.Context, command runner.Runner) ([]string, []string) {
 	var diagnostics []string
+	var warnings []string
 	if result, err := command.Run(ctx, "dkms", "status"); err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(string(result.Stdout)), "\n") {
 			if line != "" && len(diagnostics) < 100 {
 				diagnostics = append(diagnostics, "DKMS: "+line)
 			}
 		}
+		warnings = missingDKMSBuilds(result.Stdout, installedKernelVersions("/usr/lib/modules"))
 	}
 	if result, err := command.Run(ctx, "dracut", "--version"); err == nil {
 		if version := strings.TrimSpace(string(result.Stdout)); version != "" {
 			diagnostics = append(diagnostics, "Initramfs: "+strings.Split(version, "\n")[0])
 		}
 	}
-	return diagnostics
+	return diagnostics, warnings
+}
+
+func installedKernelVersions(root string) []string {
+	paths, _ := filepath.Glob(filepath.Join(root, "*"))
+	versions := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			versions = append(versions, filepath.Base(path))
+		}
+	}
+	sort.Strings(versions)
+	return versions
+}
+
+func missingDKMSBuilds(output []byte, kernels []string) []string {
+	states := map[string]map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		parts := strings.Split(line, ",")
+		if len(parts) < 3 {
+			continue
+		}
+		module, kernel := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		statusParts := strings.SplitN(parts[len(parts)-1], ":", 2)
+		if module == "" || kernel == "" || len(statusParts) != 2 {
+			continue
+		}
+		if states[module] == nil {
+			states[module] = map[string]string{}
+		}
+		states[module][kernel] = strings.TrimSpace(statusParts[1])
+	}
+	modules := make([]string, 0, len(states))
+	for module := range states {
+		modules = append(modules, module)
+	}
+	sort.Strings(modules)
+	sort.Strings(kernels)
+	var warnings []string
+	for _, module := range modules {
+		for _, kernel := range kernels {
+			status, found := states[module][kernel]
+			if status == "installed" {
+				continue
+			}
+			if found {
+				warnings = append(warnings, "DKMS module "+module+" is not installed for kernel "+kernel+" ("+status+")")
+			} else {
+				warnings = append(warnings, "DKMS module "+module+" is missing for kernel "+kernel)
+			}
+			if len(warnings) == 100 {
+				return warnings
+			}
+		}
+	}
+	return warnings
 }
 
 func pciCategory(class, description string) string {

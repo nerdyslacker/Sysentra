@@ -51,6 +51,31 @@ func TestScansUSBDevicesWithBoundInterfaceDrivers(t *testing.T) {
 	}
 }
 
+func TestScansSDIODevicesWithBoundDriver(t *testing.T) {
+	root := t.TempDir()
+	device := filepath.Join(root, "bus", "sdio", "devices", "mmc1:0001:1")
+	driver := filepath.Join(root, "bus", "sdio", "drivers", "brcmfmac")
+	if err := os.MkdirAll(device, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(driver, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{"vendor": "0x02d0\n", "device": "0xa9a6\n", "class": "0x07\n", "modalias": "sdio:c07v02D0dA9A6\n"} {
+		if err := os.WriteFile(filepath.Join(device, name), []byte(value), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(driver, filepath.Join(device, "driver")); err != nil {
+		t.Fatal(err)
+	}
+
+	devices := scanSDIO(root)
+	if len(devices) != 1 || devices[0].Bus != "SDIO" || devices[0].ID != "02D0:A9A6" || devices[0].Category != "Wi-Fi" || devices[0].Driver != "brcmfmac" || devices[0].Modalias != "sdio:c07v02D0dA9A6" {
+		t.Fatalf("devices = %#v", devices)
+	}
+}
+
 func TestCollectsBoundModulesSeparatelyFromPackages(t *testing.T) {
 	devices := []Device{
 		{Driver: "i915"},
@@ -60,5 +85,13 @@ func TestCollectsBoundModulesSeparatelyFromPackages(t *testing.T) {
 	modules := activeModules(devices)
 	if len(modules) != 3 || modules[0].Name != "i915" || modules[0].Devices != 2 || modules[1].Name != "snd-usb-audio" || modules[2].Name != "uvcvideo" {
 		t.Fatalf("modules = %#v", modules)
+	}
+}
+
+func TestReportsDKMSModulesMissingFromInstalledKernels(t *testing.T) {
+	status := []byte("nvidia/580.1, 6.12.10_1, x86_64: installed\nnvidia/580.1, 6.6.70_1, x86_64: built\nrtl8821cu/5.12, 6.12.10_1, x86_64: installed\n")
+	warnings := missingDKMSBuilds(status, []string{"6.6.70_1", "6.12.10_1"})
+	if len(warnings) != 2 || warnings[0] != "DKMS module nvidia/580.1 is not installed for kernel 6.6.70_1 (built)" || warnings[1] != "DKMS module rtl8821cu/5.12 is missing for kernel 6.6.70_1" {
+		t.Fatalf("warnings = %#v", warnings)
 	}
 }
