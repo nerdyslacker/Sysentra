@@ -202,6 +202,9 @@ test('themes dialogs and shows an explicit selected appearance mode', () => {
   assert.match(app, />Update checks</);
   assert.match(app, />Desktop notifications</);
   assert.match(app, />Check interval</);
+  assert.match(app, /role="tablist" aria-label="Settings sections"/);
+  assert.match(app, /settingsTab: 'general' \| 'appearance' \| 'sources'/);
+  assert.match(app, />General<\/button>[\s\S]*>Appearance<\/button>[\s\S]*>Additional sources<\/button>/);
   assert.match(app, /max-h-\[calc\(100vh-2rem\)\] flex-col/);
   assert.match(app, /min-h-0[^"\n]*overflow-y-auto/);
 });
