@@ -11,6 +11,8 @@ type FlatpakRemoteView struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	Enabled bool   `json:"enabled"`
+	Scope   string `json:"scope"`
+	Mutable bool   `json:"mutable"`
 }
 
 type FlatpakRemoteService struct{ manager *flatpakremote.Manager }
@@ -26,7 +28,7 @@ func (s *FlatpakRemoteService) ListFlatpakRemotes() ([]FlatpakRemoteView, error)
 	}
 	views := make([]FlatpakRemoteView, len(remotes))
 	for index, remote := range remotes {
-		views[index] = FlatpakRemoteView{Name: remote.Name, Title: remote.Title, URL: remote.URL, Enabled: remote.Enabled()}
+		views[index] = FlatpakRemoteView{Name: remote.Name, Title: remote.Title, URL: remote.URL, Enabled: remote.Enabled(), Scope: remote.Scope(), Mutable: remote.Scope() == "User"}
 	}
 	return views, nil
 }

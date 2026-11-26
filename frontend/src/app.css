@@ -213,38 +213,152 @@ select option {
   container-type: inline-size;
 }
 
-.kernel-grid {
-  grid-template-columns: minmax(8rem, 1.25fr) minmax(7rem, 1fr) 6.5rem 6rem minmax(8rem, 1fr) 6.5rem 14rem;
-  gap: 0.75rem;
+.kernel-table {
+  container-name: kernel-table;
+  container-type: inline-size;
 }
 
-.kernel-image-grid {
-  grid-template-columns: minmax(12rem, 1fr) 7rem 7rem minmax(10rem, 1fr);
-  gap: 0.75rem;
+.firmware-table {
+  container-name: firmware-table;
+  container-type: inline-size;
 }
 
-.kernel-dkms-grid {
-  grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 0.8fr) minmax(8rem, 1fr) 7rem 7rem 6rem;
-  gap: 0.75rem;
+.kernel-package-table-grid,
+.kernel-image-table-grid,
+.kernel-dkms-table-grid,
+.firmware-table-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
 }
 
-.repository-grid {
-  grid-template-columns: 3rem 4rem minmax(8rem, 0.8fr) minmax(10rem, 2fr) minmax(8.5rem, auto);
-  align-items: center;
-  column-gap: 0.5rem;
-}
-
-.xbps-config-grid {
-  grid-template-columns: 9rem minmax(10rem, 1fr) minmax(12rem, 1.2fr) 8.5rem;
-  align-items: center;
-  column-gap: 0.75rem;
-}
-
-.repository-grid > *,
-.xbps-config-grid > * {
+.kernel-package-table-grid th,
+.kernel-package-table-grid td,
+.kernel-image-table-grid th,
+.kernel-image-table-grid td,
+.kernel-dkms-table-grid th,
+.kernel-dkms-table-grid td,
+.firmware-table-grid th,
+.firmware-table-grid td {
   min-width: 0;
-  justify-self: start;
+  overflow: hidden;
+  padding: 0.5rem 0.75rem;
   text-align: left;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.kernel-version-column { width: 15%; }
+.kernel-type-column { width: 6.5rem; }
+.kernel-size-column { width: 5rem; }
+.kernel-date-column { width: 8rem; }
+.kernel-status-column { width: 7rem; }
+.kernel-actions-column { width: 14rem; }
+.kernel-image-size-column { width: 7rem; }
+.kernel-image-status-column { width: 7rem; }
+.kernel-image-actions-column { width: 11rem; }
+.dkms-version-column { width: 8rem; }
+.dkms-kernel-column { width: 10rem; }
+.dkms-arch-column { width: 7rem; }
+.dkms-status-column { width: 7rem; }
+.dkms-actions-column { width: 7rem; }
+.firmware-vendor-column { width: 18%; }
+.firmware-version-column { width: 8rem; }
+.firmware-status-column { width: 10rem; }
+.firmware-action-column { width: 6rem; }
+
+.repository-table {
+  container-name: repository-table;
+  container-type: inline-size;
+}
+
+.repository-table-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.repository-table-grid th,
+.repository-table-grid td {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.repository-active-column {
+  width: 4rem;
+}
+
+.repository-priority-column {
+  width: 4.5rem;
+}
+
+.repository-name-column {
+  width: 22%;
+}
+
+.repository-actions-column {
+  width: 9rem;
+}
+
+.flatpak-remote-table {
+  container-name: flatpak-remote-table;
+  container-type: inline-size;
+}
+
+.xbps-config-table {
+  container-name: xbps-config-table;
+  container-type: inline-size;
+}
+
+.flatpak-remote-table-grid,
+.xbps-config-table-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.flatpak-remote-table-grid th,
+.flatpak-remote-table-grid td,
+.xbps-config-table-grid th,
+.xbps-config-table-grid td {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.remote-active-column {
+  width: 4rem;
+}
+
+.remote-name-column {
+  width: 22%;
+}
+
+.remote-scope-column {
+  width: 5rem;
+}
+
+.remote-actions-column,
+.xbps-actions-column {
+  width: 9rem;
+}
+
+.xbps-kind-column {
+  width: 9rem;
+}
+
+.xbps-origin-column {
+  width: 32%;
 }
 
 .mirror-grid {
@@ -270,11 +384,6 @@ select option {
 .mirror-status,
 .mirror-action {
   width: 100%;
-}
-
-.firmware-grid {
-  grid-template-columns: minmax(8rem, 1.5fr) minmax(6rem, 1fr) minmax(5rem, 0.7fr) minmax(6rem, 0.8fr) 9.5rem 6rem;
-  gap: 0.75rem;
 }
 
 .firewall-grid {
@@ -344,8 +453,7 @@ select option {
 }
 
 .samba-grid > *,
-.nfs-grid > *,
-.firmware-grid > * {
+.nfs-grid > * {
   min-width: 0;
   justify-self: stretch;
   text-align: left;
@@ -415,29 +523,80 @@ select option {
   }
 }
 
-@media (max-width: 650px) {
-  .kernel-grid {
-    grid-template-columns: minmax(7rem, 1fr) minmax(6rem, 0.8fr) 6rem 6.5rem 14rem;
-  }
-  .kernel-date,
-  .kernel-type,
-  .repository-priority,
-  .firmware-vendor,
-  .firmware-available {
+@container repository-table (max-width: 700px) {
+  .repository-priority {
     display: none;
   }
-  .repository-grid {
-    grid-template-columns: 3rem minmax(7rem, 0.8fr) minmax(0, 2fr) minmax(8.5rem, auto);
+}
+
+@container repository-table (max-width: 520px) {
+  .repository-name-column,
+  .repository-name {
+    display: none;
   }
-  .xbps-config-grid {
-    grid-template-columns: 9rem minmax(8rem, 1fr) 8.5rem;
+}
+
+@container flatpak-remote-table (max-width: 700px) {
+  .remote-scope {
+    display: none;
   }
+}
+
+@container xbps-config-table (max-width: 700px) {
   .xbps-config-origin {
     display: none;
   }
-  .firmware-grid {
-    grid-template-columns: minmax(7rem, 1fr) minmax(5rem, 0.7fr) 9.5rem 6rem;
+}
+
+@container flatpak-remote-table (max-width: 520px) {
+  .remote-name {
+    display: none;
   }
+}
+
+@container xbps-config-table (max-width: 520px) {
+  .xbps-kind {
+    display: none;
+  }
+}
+
+@container kernel-table (max-width: 1000px) {
+  .kernel-type,
+  .kernel-date,
+  .dkms-version,
+  .dkms-arch {
+    display: none;
+  }
+}
+
+@container kernel-table (max-width: 720px) {
+  .kernel-version,
+  .kernel-size,
+  .dkms-kernel,
+  .kernel-image-size {
+    display: none;
+  }
+}
+
+@container firmware-table (max-width: 900px) {
+  .firmware-vendor {
+    display: none;
+  }
+}
+
+@container firmware-table (max-width: 700px) {
+  .firmware-available {
+    display: none;
+  }
+}
+
+@container firmware-table (max-width: 520px) {
+  .firmware-current {
+    display: none;
+  }
+}
+
+@media (max-width: 650px) {
   .service-grid {
     grid-template-columns: minmax(7rem, 1fr) 6rem 4rem 4rem 4rem;
   }

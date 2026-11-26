@@ -20,11 +20,14 @@ func (r *runnerStub) Run(_ context.Context, name string, args ...string) (runner
 	return r.result, nil
 }
 
-func TestManagerListsDisabledUserRemotes(t *testing.T) {
-	command := &runnerStub{result: runner.Result{Stdout: []byte(`[{"name":"flathub","title":"Flathub","url":"https://flathub.org/repo/flathub.flatpakrepo","options":"disabled"}]`)}}
+func TestManagerListsUserAndSystemRemotes(t *testing.T) {
+	command := &runnerStub{result: runner.Result{Stdout: []byte(`[{"name":"flathub","title":"Flathub","url":"https://dl.flathub.org/repo/","options":"system"},{"name":"test","title":"Test","url":"https://example.org/repo/","options":"user,disabled"}]`)}}
 	remotes, err := New(command).List(context.Background())
-	if err != nil || len(remotes) != 1 || remotes[0].Enabled() {
+	if err != nil || len(remotes) != 2 || remotes[0].Scope() != "System" || !remotes[0].Enabled() || remotes[1].Scope() != "User" || remotes[1].Enabled() {
 		t.Fatalf("remotes=%#v err=%v", remotes, err)
+	}
+	if reflect.DeepEqual(command.args, []string{"remotes", "--user", "--show-disabled", "--columns=name,title,url,options", "--json"}) {
+		t.Fatal("list is still restricted to user remotes")
 	}
 }
 

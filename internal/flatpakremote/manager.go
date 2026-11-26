@@ -22,12 +22,19 @@ type Remote struct {
 
 func (r Remote) Enabled() bool { return !strings.Contains(r.Options, "disabled") }
 
+func (r Remote) Scope() string {
+	if strings.Contains(r.Options, "system") {
+		return "System"
+	}
+	return "User"
+}
+
 type Manager struct{ runner runner.Runner }
 
 func New(commandRunner runner.Runner) *Manager { return &Manager{runner: commandRunner} }
 
 func (m *Manager) List(ctx context.Context) ([]Remote, error) {
-	result, err := m.runner.Run(ctx, "flatpak", "remotes", "--user", "--show-disabled", "--columns=name,title,url,options", "--json")
+	result, err := m.runner.Run(ctx, "flatpak", "remotes", "--show-disabled", "--columns=name,title,url,options", "--json")
 	if err != nil {
 		return nil, err
 	}
