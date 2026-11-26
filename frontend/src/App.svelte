@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { Browser, Events } from '@wailsio/runtime';
 
   import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, SambaShareView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
@@ -17,6 +17,7 @@
   import NavigationIcon from './components/NavigationIcon.svelte';
   import ServiceDetailsSidebar from './components/ServiceDetailsSidebar.svelte';
   import { updatePackageAfterTransaction } from './lib/package-list.js';
+  import { isTransactionMinimizable, minimizedStatusFor } from './lib/transaction-minimize.js';
 
   const navigation = ['Discover', 'Installed', 'Updates', 'Repositories', 'XBPS Config', 'Mirrors', 'Services', 'Users & Groups', 'Firewall', 'Samba Server', 'NFS Client', 'Kernels', 'Firmware', 'Drivers'];
   const driverCategories = ['All', 'Active', 'Video', 'Wi-Fi', 'Ethernet', 'Bluetooth', 'Audio', 'Webcam', 'Touchscreen', 'Printers', 'Scanners', 'Other'];
@@ -140,6 +141,8 @@
   let upgradeSources: UpgradeSource[] = [];
   let transactionLogsVisible = false;
   let transactionSequence = 0;
+  let transactionMinimized = false;
+  let minimizedTransactionWidget: HTMLButtonElement;
   let confirmationAction: (() => Promise<void>) | null = null;
   let historyDialog: HTMLDialogElement;
   let transactionHistory: TransactionHistoryView[] = [];
@@ -247,6 +250,9 @@
   $: filteredNFSMounts = nfsMounts.filter((item) => [item.source, item.target, item.type, item.options, item.mounted ? 'mounted' : 'unmounted'].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredUsers = users.filter((item) => [item.name, item.home, item.shell, String(item.uid), ...item.groups].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredGroups = groups.filter((item) => [item.name, String(item.gid), ...item.members].some((value) => value.toLowerCase().includes(normalizedQuery)));
+  $: transactionMinimizable = isTransactionMinimizable(transactionPlan, transactionLoading, confirmationAction, transactionOutcome);
+  $: minimizedTransactionStatus = minimizedStatusFor(transactionOutcome, transactionError, transactionLoading, streamingTransactionRequest, transactionPlan);
+  $: latestTransactionLog = transactionLogs.length ? transactionLogs[transactionLogs.length - 1] : '';
 
   onMount(() => {
     const backgroundLaunch = new URLSearchParams(window.location.search).has('background');
@@ -488,7 +494,26 @@
     });
   }
 
+  function focusMinimizedTransaction(): boolean {
+    if (!transactionMinimized) return false;
+    restoreTransactionDialog();
+    return true;
+  }
+
+  function minimizeTransactionDialog(): void {
+    if (!transactionMinimizable) return;
+    transactionMinimized = true;
+    confirmationDialog.close();
+    void tick().then(() => minimizedTransactionWidget?.focus());
+  }
+
+  function restoreTransactionDialog(): void {
+    transactionMinimized = false;
+    if (!confirmationDialog.open) confirmationDialog.showModal();
+  }
+
   function openConfirmation(title: string, description: string, destructive = false, operation = '', action: (() => Promise<void>) | null = null, targetVersion = '') {
+    if (focusMinimizedTransaction()) return;
     confirmation = { title, description, destructive };
     transactionPlan = null;
     transactionError = '';
@@ -515,6 +540,7 @@
   }
 
   async function openSelectedPackageTransaction(action: 'install' | 'remove' | 'update' | 'force-remove') {
+    if (focusMinimizedTransaction()) return;
     if (selectedPackages.length === 0) return;
     if (action === 'force-remove') {
       const packageIDs = selectedPackages.filter((pkg) => pkg.backendId === 'xbps' && pkg.installed).map((pkg) => pkg.id);
@@ -544,6 +570,7 @@
   }
 
   async function openFlatpakCleanup() {
+    if (focusMinimizedTransaction()) return;
     confirmation = { title: 'Remove unused Flatpak runtimes', description: 'Remove user-scoped Flatpak runtimes and extensions no longer required by installed applications.', destructive: true };
     transactionPlan = null;
     transactionError = '';
@@ -563,6 +590,7 @@
   }
 
   async function openMaintenance(title: string, description: string, operation: string, destructive: boolean, packageIDs: string[] = []) {
+    if (focusMinimizedTransaction()) return;
     confirmation = { title, description, destructive };
     transactionPlan = null;
     transactionError = '';
@@ -593,6 +621,7 @@
   }
 
   async function openNamedPackageTransaction(title: string, description: string, packageNames: string[], action: 'install' | 'update' | 'remove' | 'purge' | 'reconfigure') {
+    if (focusMinimizedTransaction()) return;
     if (packageNames.length === 0) return;
     confirmation = { title, description, destructive: action === 'remove' || action === 'purge' };
     transactionPlan = null;
@@ -625,6 +654,7 @@
   }
 
   async function openDriverRemoval(packageName: string, module: string, description: string) {
+    if (focusMinimizedTransaction()) return;
     confirmation = { title: `Remove ${packageName}`, description, destructive: true };
     transactionPlan = null;
     transactionError = '';
@@ -697,6 +727,7 @@
   }
 
   async function openSystemUpgrade() {
+    if (focusMinimizedTransaction()) return;
     confirmation = { title: 'Full system upgrade', description: 'Upgrade all packages with available updates.', destructive: false };
     transactionPlan = null;
     transactionError = '';
@@ -757,6 +788,7 @@
   }
 
   async function openDatabaseSync() {
+    if (focusMinimizedTransaction()) return;
     confirmation = { title: 'Sync package database', description: 'Refresh XBPS repository indexes.', destructive: false };
     transactionPlan = null;
     transactionError = '';
@@ -1407,6 +1439,7 @@
   }
 
   function openFirewallDialog(mode: typeof firewallDialogMode, rule: FirewallRuleView | null = null) {
+    if (focusMinimizedTransaction()) return;
     if (!firewall) return;
     firewallDialogMode = mode;
     firewallOldRule = rule;
@@ -1746,6 +1779,16 @@
     <span class="ml-auto">{systemName}</span>
   </footer>
 
+  {#if transactionMinimized}
+    <button bind:this={minimizedTransactionWidget} type="button" class="fixed bottom-12 right-4 z-40 w-72 rounded-base border border-surface-300-700 bg-surface-100-800 p-3 text-left text-surface-950-50 shadow-xl" aria-label="Restore package transaction" on:click={restoreTransactionDialog}>
+      <span class="flex items-center gap-2"><span class="min-w-0 flex-1 truncate text-sm font-semibold">{confirmation.title}</span>{#if transactionOutcome === 'success'}<span class="text-success-700-300" aria-hidden="true">✔</span>{:else if transactionOutcome === 'failure'}<span class="text-error-700-300" aria-hidden="true">✕</span>{/if}</span>
+      <span class="mt-1 block text-xs text-surface-500">{minimizedTransactionStatus}</span>
+      {#if transactionLoading}<span class="mt-2 block h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></span>{/if}
+      {#if latestTransactionLog}<span class="mt-2 block truncate font-mono text-[0.6875rem] text-surface-500" title={latestTransactionLog}>{latestTransactionLog}</span>{/if}
+    </button>
+  {/if}
+  <span class="sr-only" role="status" aria-live="polite">{transactionMinimized ? minimizedTransactionStatus : ''}</span>
+
   <dialog bind:this={settingsDialog} class="app-dialog m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="settings-title">
     <div class="dialog-frame">
       <header class="shrink-0 border-b border-surface-300-700 px-4 py-3"><h2 id="settings-title" class="font-semibold">Settings</h2><p class="text-xs text-surface-500">Appearance, package sources, and update checks.</p></header>
@@ -1814,7 +1857,7 @@
 
   <dialog bind:this={confirmationDialog} class="app-dialog m-auto w-[min(54rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="confirmation-title">
     <form method="dialog">
-      <header class="flex items-center gap-3 border-b border-surface-300-700 px-4 py-3"><h2 id="confirmation-title" class="font-semibold">{confirmation.title}</h2>{#if transactionPlan || transactionLogs.length}<button type="button" class="btn preset-tonal ml-auto" aria-expanded={transactionLogsVisible} aria-controls="transaction-native-logs" on:click={() => transactionLogsVisible = !transactionLogsVisible}>{transactionLogsVisible ? 'Hide logs' : 'Show logs'}</button>{/if}</header>
+      <header class="flex items-center gap-3 border-b border-surface-300-700 px-4 py-3"><h2 id="confirmation-title" class="font-semibold">{confirmation.title}</h2>{#if transactionMinimizable}<button type="button" class="btn preset-tonal ml-auto" on:click={minimizeTransactionDialog}>Minimize</button>{/if}</header>
       <div class="space-y-3 p-4">
         <p class="text-sm">{confirmation.description}</p>
         {#if transactionLoading}<div class="space-y-2" role="status" aria-live="polite"><p class="text-xs text-surface-500">{transactionPlan ? 'Applying transaction…' : 'Preparing transaction preview…'}</p><div class="h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></div></div>{/if}
@@ -1840,6 +1883,7 @@
         {#if transactionOutcome === 'success'}<p class="rounded-base border border-success-500/40 bg-success-500/10 p-3 text-sm text-success-700-300" role="status">Transaction complete.</p>{/if}
       </div>
       <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3">
+        {#if transactionPlan || transactionLogs.length}<button type="button" class="btn preset-tonal" aria-expanded={transactionLogsVisible} aria-controls="transaction-native-logs" on:click={() => transactionLogsVisible = !transactionLogsVisible}>{transactionLogsVisible ? 'Hide logs' : 'Show logs'}</button>{/if}
         <button type="submit" class="btn preset-tonal" disabled={transactionLoading}>{transactionOutcome ? 'Close' : 'Cancel'}</button>
         {#if !transactionOutcome}<button type="button" class="btn {confirmation.destructive ? 'bg-error-600 text-white' : 'preset-filled-primary-500'}" disabled={(!transactionPlan && !confirmationAction) || transactionLoading || upgradeSources.some((source) => source.selected && (source.loading || Boolean(source.error)))} on:click={executeConfirmation}>{transactionLoading ? 'Working…' : 'Confirm'}</button>{/if}
       </footer>
