@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Browser } from '@wailsio/runtime';
+  import { Browser, Events } from '@wailsio/runtime';
 
   import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, SambaShareView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
   import { Discover, FindOwningPackage, GetPackageDetails, ListAdditionalSources, ListInstalled, ListUpdates, SetAdditionalSourceEnabled } from '../bindings/sysentra/internal/app/packageservice';
@@ -136,6 +136,7 @@
   let transactionError = '';
   let transactionOutcome: 'success' | 'failure' | '' = '';
   let transactionExecutionLogs: string[] = [];
+  let streamingTransactionRequest = '';
   let upgradeSources: UpgradeSource[] = [];
   let transactionLogsVisible = false;
   let transactionSequence = 0;
@@ -214,6 +215,14 @@
   let additionalSources: AdditionalSourceView[] = [];
   let sourceSaving = '';
   let settingsError = '';
+
+  function autoScroll(node: HTMLElement) {
+    const scrollToLatest = () => node.scrollTop = node.scrollHeight;
+    const observer = new MutationObserver(scrollToLatest);
+    observer.observe(node, { childList: true, characterData: true, subtree: true });
+    scrollToLatest();
+    return { destroy: () => observer.disconnect() };
+  }
   let updatePreferences = { scheduled: true, notifications: true, intervalMinutes: 360 };
   let updatePreferencesSaving = false;
   let autostartEnabled = false;
@@ -259,6 +268,12 @@
     systemColorMode.addEventListener('change', followSystemMode);
     window.addEventListener('pointerdown', usePointerFocus, true);
     window.addEventListener('keydown', useKeyboardFocus, true);
+    const stopTransactionLogs = Events.On('transaction:log', (event) => {
+      const entry = event.data as { requestId?: string; line?: string };
+      if (entry.requestId === streamingTransactionRequest && typeof entry.line === 'string') {
+        transactionExecutionLogs = [...transactionExecutionLogs.slice(-499), entry.line];
+      }
+    });
     restoreAdditionalSources();
     loadSystemFonts();
     GetSystemInfo().then((info) => systemName = info.name).catch(() => {});
@@ -269,6 +284,7 @@
       systemColorMode.removeEventListener('change', followSystemMode);
       window.removeEventListener('pointerdown', usePointerFocus, true);
       window.removeEventListener('keydown', useKeyboardFocus, true);
+      stopTransactionLogs();
     };
   });
 
@@ -768,6 +784,7 @@
     try {
       const operation = transactionPlan.operation;
       const changedPackages = transactionPlan.changes.map((change) => change.name);
+      streamingTransactionRequest = transactionPlan.requestId;
       const result = await CommitPackage(transactionPlan.requestId);
       transactionExecutionLogs = result.diagnostics ?? [];
       if (operation === 'system-upgrade') {
@@ -776,8 +793,11 @@
           await refreshUpgradeSourcePreview(source.id);
           if (source.error) throw new Error(`${source.name} preview failed: ${source.error}`);
           for (const sourcePlan of source.plans) {
+            const previousLogs = [...transactionExecutionLogs, `[${source.name}]`];
+            transactionExecutionLogs = previousLogs;
+            streamingTransactionRequest = sourcePlan.plan.requestId;
             const sourceResult = await CommitPackage(sourcePlan.plan.requestId);
-            transactionExecutionLogs = [...transactionExecutionLogs, `[${source.name}]`, ...(sourceResult.diagnostics ?? [])];
+            transactionExecutionLogs = [...previousLogs, ...(sourceResult.diagnostics ?? [])];
           }
         }
       }
@@ -792,9 +812,10 @@
       if (activeView !== 'Discover' && activeView !== 'Installed' && activeView !== 'Updates') await loadSystemView(activeView);
     } catch (error) {
       transactionError = error instanceof Error ? error.message : String(error);
-      transactionExecutionLogs = [transactionError];
+      transactionExecutionLogs = [...transactionExecutionLogs, transactionError];
       transactionOutcome = 'failure';
     } finally {
+      streamingTransactionRequest = '';
       transactionLoading = false;
     }
   }
@@ -1725,8 +1746,8 @@
     <span class="ml-auto">{systemName}</span>
   </footer>
 
-  <dialog bind:this={settingsDialog} class="m-auto w-[min(34rem,calc(100%-2rem))] overflow-hidden rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="settings-title">
-    <div class="flex max-h-[calc(100vh-2rem)] flex-col">
+  <dialog bind:this={settingsDialog} class="app-dialog m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="settings-title">
+    <div class="dialog-frame">
       <header class="shrink-0 border-b border-surface-300-700 px-4 py-3"><h2 id="settings-title" class="font-semibold">Settings</h2><p class="text-xs text-surface-500">Appearance, package sources, and update checks.</p></header>
       <div class="flex shrink-0 gap-1 border-b border-surface-300-700 px-4 pt-2" role="tablist" aria-label="Settings sections">
         <button id="settings-general-tab" type="button" role="tab" aria-controls="settings-general-panel" aria-selected={settingsTab === 'general'} class="border-b-2 px-3 py-2 text-sm {settingsTab === 'general' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-600-400 hover:text-surface-950-50'}" on:click={() => settingsTab = 'general'}>General</button>
@@ -1765,7 +1786,7 @@
     </div>
   </dialog>
 
-  <dialog bind:this={serviceDialog} class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="service-dialog-title">
+  <dialog bind:this={serviceDialog} class="app-dialog m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="service-dialog-title">
     <form on:submit|preventDefault={submitService}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="service-dialog-title" class="font-semibold">Add {serviceScope} service</h2></header>
       <div class="space-y-3 p-4">
@@ -1779,19 +1800,19 @@
     </form>
   </dialog>
 
-  <dialog bind:this={kernelReconfigureDialog} class="m-auto w-[min(48rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="kernel-reconfigure-title">
-    <div><header class="border-b border-surface-300-700 px-4 py-3"><h2 id="kernel-reconfigure-title" class="font-semibold">{kernelReconfigureTitle}</h2></header><div class="space-y-3 p-4">
+  <dialog bind:this={kernelReconfigureDialog} class="app-dialog m-auto w-[min(48rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="kernel-reconfigure-title">
+    <div class="dialog-frame"><header class="border-b border-surface-300-700 px-4 py-3"><h2 id="kernel-reconfigure-title" class="font-semibold">{kernelReconfigureTitle}</h2></header><div class="space-y-3 p-4">
       {#if kernelReconfigureLoading}<div class="space-y-2" role="status" aria-live="polite"><p class="text-sm">Regenerating kernel configuration and initramfs…</p><div class="h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></div></div>{/if}
-      <section class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50" aria-label="Kernel reconfiguration logs"><pre class="max-h-[50vh] min-h-36 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{kernelReconfigureLogs.join('\n')}</pre></section>
+      <section class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50" aria-label="Kernel reconfiguration logs"><pre use:autoScroll class="max-h-[50vh] min-h-36 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{kernelReconfigureLogs.join('\n')}</pre></section>
       {#if kernelReconfigureError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-sm text-error-700-300" role="alert">Reconfiguration failed: {kernelReconfigureError}</p>{:else if kernelReconfigureSucceeded}<p class="rounded-base border border-success-500/40 bg-success-500/10 p-3 text-sm text-success-700-300" role="status">Kernel reconfiguration completed.</p>{/if}
     </div><footer class="flex justify-end border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={kernelReconfigureLoading} on:click={() => kernelReconfigureDialog.close()}>Close</button></footer></div>
   </dialog>
 
-  <dialog bind:this={historyDialog} class="m-auto w-[min(48rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="history-title">
+  <dialog bind:this={historyDialog} class="app-dialog m-auto w-[min(48rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="history-title">
     <div><header class="border-b border-surface-300-700 px-4 py-3"><h2 id="history-title" class="font-semibold">Transaction history</h2></header><div class="max-h-[60vh] overflow-auto">{#if historyError}<p class="m-4 rounded-base border border-error-500/40 bg-error-500/10 p-3 text-sm" role="alert">{historyError}</p>{:else if transactionHistory.length}<table class="w-full table-fixed text-left text-sm"><thead class="sticky top-0 bg-surface-200-800 text-xs"><tr><th class="w-[24%] px-3 py-2">Time</th><th class="w-[22%] px-3 py-2">Action</th><th class="w-[16%] px-3 py-2">Status</th><th class="px-3 py-2">Message</th></tr></thead><tbody>{#each transactionHistory as item}<tr class="border-t border-surface-300-700"><td class="truncate px-3 py-2 font-mono text-xs" title={item.time}>{new Date(item.time).toLocaleString()}</td><td class="truncate px-3 py-2">{item.operation}</td><td class="px-3 py-2"><span class="rounded-full border px-2 py-0.5 text-xs {item.status === 'completed' ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : 'border-error-500/40 bg-error-500/10 text-error-700-300'}">{item.status}</span></td><td class="truncate px-3 py-2 text-xs" title={item.message}>{item.message || '—'}</td></tr>{/each}</tbody></table>{:else}<p class="p-5 text-sm text-surface-500">No package transactions recorded.</p>{/if}</div><footer class="flex justify-end border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" on:click={() => historyDialog.close()}>Close</button></footer></div>
   </dialog>
 
-  <dialog bind:this={confirmationDialog} class="m-auto w-[min(54rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="confirmation-title">
+  <dialog bind:this={confirmationDialog} class="app-dialog m-auto w-[min(54rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="confirmation-title">
     <form method="dialog">
       <header class="flex items-center gap-3 border-b border-surface-300-700 px-4 py-3"><h2 id="confirmation-title" class="font-semibold">{confirmation.title}</h2>{#if transactionPlan || transactionLogs.length}<button type="button" class="btn preset-tonal ml-auto" aria-expanded={transactionLogsVisible} aria-controls="transaction-native-logs" on:click={() => transactionLogsVisible = !transactionLogsVisible}>{transactionLogsVisible ? 'Hide logs' : 'Show logs'}</button>{/if}</header>
       <div class="space-y-3 p-4">
@@ -1813,7 +1834,7 @@
         {:else if !transactionLoading && !transactionError && !confirmationAction}
           <p class="rounded-base border border-warning-500/40 bg-warning-500/10 p-3 text-xs">This action is unavailable.</p>
         {/if}
-        {#if transactionLogsVisible}<section id="transaction-native-logs" class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50"><h3 class="border-b border-surface-700 px-3 py-2 text-xs font-semibold">Logs</h3><pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{transactionLogs.length ? transactionLogs.join('\n') : 'No output.'}</pre></section>{/if}
+        {#if transactionLogsVisible}<section id="transaction-native-logs" class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50"><h3 class="border-b border-surface-700 px-3 py-2 text-xs font-semibold">Logs</h3><pre use:autoScroll class="max-h-48 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{transactionLogs.length ? transactionLogs.join('\n') : 'No output.'}</pre></section>{/if}
         {#if transactionError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{transactionError}</p>{/if}
         {#if transactionOutcome === 'failure'}<div class="flex items-center gap-3 rounded-base border border-warning-500/40 bg-warning-500/10 p-3 text-xs"><p>Package state may have changed. Reload the catalog before creating a new transaction preview.</p><button type="button" class="btn preset-tonal ml-auto shrink-0" on:click={() => { confirmationDialog.close(); reloadPackages(); }}>Reload state</button></div>{/if}
         {#if transactionOutcome === 'success'}<p class="rounded-base border border-success-500/40 bg-success-500/10 p-3 text-sm text-success-700-300" role="status">Transaction complete.</p>{/if}
@@ -1825,7 +1846,7 @@
     </form>
   </dialog>
 
-  <dialog bind:this={ruleDialog} class="m-auto w-[min(30rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="rule-title">
+  <dialog bind:this={ruleDialog} class="app-dialog m-auto w-[min(30rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="rule-title">
     <form on:submit|preventDefault={saveRule}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="rule-title" class="font-semibold">{ruleOperation === 'edit' ? 'Edit XBPS rule' : 'Add XBPS rule'}</h2></header>
       <div class="space-y-3 p-4">
@@ -1838,7 +1859,7 @@
     </form>
   </dialog>
 
-  <dialog bind:this={firewallDialog} class="m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="firewall-dialog-title">
+  <dialog bind:this={firewallDialog} class="app-dialog m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="firewall-dialog-title">
     <form on:submit|preventDefault={saveFirewallConfiguration}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="firewall-dialog-title" class="font-semibold">{firewallDialogMode === 'policy' ? 'UFW default policy' : firewallDialogMode === 'zone' ? 'firewalld default zone' : firewallDialogMode === 'edit' ? 'Edit firewall rule' : 'Add firewall rule'}</h2></header>
       <div class="space-y-3 p-4">
@@ -1860,7 +1881,7 @@
     </form>
   </dialog>
 
-  <dialog bind:this={firmwareDialog} class="m-auto w-[min(42rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="firmware-dialog-title">
+  <dialog bind:this={firmwareDialog} class="app-dialog m-auto w-[min(42rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="firmware-dialog-title">
     <div>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="firmware-dialog-title" class="font-semibold">{firmwareOperation === 'refresh' ? 'Refresh firmware metadata' : `Update ${firmwareDevice?.name || 'firmware'}`}</h2></header>
       <div class="space-y-3 p-4">
@@ -1874,14 +1895,14 @@
           <p class="text-xs text-surface-500">fwupd keeps its signature, power, device-safety, and offline-update checks enabled.</p>
         {/if}
         {#if firmwareActionLoading}<div class="space-y-2" role="status" aria-live="polite"><p class="text-sm">{firmwareOperation === 'refresh' ? 'Refreshing metadata…' : 'Applying firmware update…'}</p><div class="h-1.5 overflow-hidden rounded-full bg-surface-300-700"><span class="block h-full w-1/3 animate-pulse rounded-full bg-primary-500"></span></div></div>{/if}
-        {#if firmwareActionLogs.length}<section class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50" aria-label="fwupd output"><pre class="max-h-48 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{firmwareActionLogs.join('\n')}</pre></section>{/if}
+        {#if firmwareActionLogs.length}<section class="overflow-hidden rounded-base border border-surface-300-700 bg-surface-950 text-surface-50" aria-label="fwupd output"><pre use:autoScroll class="max-h-48 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs">{firmwareActionLogs.join('\n')}</pre></section>{/if}
         {#if firmwareActionError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-sm text-error-700-300" role="alert">{firmwareActionError}</p>{:else if firmwareActionSucceeded}<p class="rounded-base border border-success-500/40 bg-success-500/10 p-3 text-sm text-success-700-300" role="status">{firmwareOperation === 'refresh' ? 'Firmware metadata refreshed.' : firmwareDevice?.shutdownRequired ? 'Firmware staged. Shut down when ready to complete the update.' : firmwareDevice?.rebootRequired ? 'Firmware staged. Reboot when ready to complete the update.' : 'Firmware update completed.'}</p>{/if}
       </div>
       <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={firmwareActionLoading} on:click={() => firmwareDialog.close()}>{firmwareActionSucceeded ? 'Close' : 'Cancel'}</button>{#if !firmwareActionSucceeded}<button type="button" class="btn preset-filled-primary-500" disabled={firmwareActionLoading || (firmwareOperation === 'update' && !firmwareDevice?.newVersion)} on:click={executeFirmwareAction}>{firmwareActionLoading ? 'Working…' : firmwareOperation === 'refresh' ? 'Refresh' : 'Install update'}</button>{/if}</footer>
     </div>
   </dialog>
 
-  <dialog bind:this={accountDialog} class="m-auto w-[min(30rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="account-title">
+  <dialog bind:this={accountDialog} class="app-dialog m-auto w-[min(30rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="account-title">
     <form on:submit|preventDefault={saveAccount}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="account-title" class="font-semibold">{accountOperation === 'user-add' ? 'Add user' : accountOperation === 'group-add' ? 'Add group' : accountOperation === 'user-edit' ? `Edit ${accountUser}` : accountOperation === 'primary-group-change' ? `Primary group for ${accountUser}` : accountOperation === 'membership-add' ? `Assign group to ${accountUser}` : `Unassign group from ${accountUser}`}</h2></header>
       <div class="space-y-3 p-4">
@@ -1892,12 +1913,12 @@
     </form>
   </dialog>
 
-  <dialog bind:this={accountHistoryDialog} class="m-auto w-[min(42rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="account-history-title">
+  <dialog bind:this={accountHistoryDialog} class="app-dialog m-auto w-[min(42rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="account-history-title">
     <header class="flex items-center border-b border-surface-300-700 px-4 py-3"><h2 id="account-history-title" class="font-semibold">Account history</h2><button type="button" class="btn preset-tonal ml-auto" on:click={() => accountHistoryDialog.close()}>Close</button></header>
-    <div class="max-h-[28rem] overflow-auto"><div class="grid grid-cols-[11rem_1fr_1fr] border-b border-surface-300-700 bg-surface-50-900 px-4 py-2 text-xs font-semibold"><span>Time</span><span>Action</span><span>Target</span></div>{#each accountHistory as item}<div class="grid grid-cols-[11rem_1fr_1fr] border-b border-surface-200-800 px-4 py-2 text-sm"><span class="font-mono text-xs">{new Date(item.time).toLocaleString()}</span><span>{item.operation}</span><span>{item.target}</span></div>{:else}<p class="p-5 text-sm text-surface-500">No account changes recorded.</p>{/each}</div>
+    <div class="dialog-content overflow-auto"><div class="grid grid-cols-[11rem_1fr_1fr] border-b border-surface-300-700 bg-surface-50-900 px-4 py-2 text-xs font-semibold"><span>Time</span><span>Action</span><span>Target</span></div>{#each accountHistory as item}<div class="grid grid-cols-[11rem_1fr_1fr] border-b border-surface-200-800 px-4 py-2 text-sm"><span class="font-mono text-xs">{new Date(item.time).toLocaleString()}</span><span>{item.operation}</span><span>{item.target}</span></div>{:else}<p class="p-5 text-sm text-surface-500">No account changes recorded.</p>{/each}</div>
   </dialog>
 
-  <dialog bind:this={sambaGlobalDialog} class="m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="samba-global-title">
+  <dialog bind:this={sambaGlobalDialog} class="app-dialog m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="samba-global-title">
     <form on:submit|preventDefault={saveSambaGlobal}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="samba-global-title" class="font-semibold">Global Samba configuration</h2></header>
       <div class="space-y-4 p-4">
@@ -1914,7 +1935,7 @@
     </form>
   </dialog>
 
-  <dialog bind:this={configDialog} class="m-auto w-[min(46rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="config-title">
+  <dialog bind:this={configDialog} class="app-dialog m-auto w-[min(46rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="config-title">
     <form on:submit|preventDefault={saveConfig}>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="config-title" class="font-semibold">{configOperation === 'edit' ? `Edit ${configKind === 'flatpak' ? 'Flatpak remote' : configKind === 'samba' ? 'Samba share' : configKind === 'nfs' ? 'NFS mount' : 'repository'}` : configKind === 'repository' ? 'Add repository' : configKind === 'flatpak' ? 'Add Flatpak remote' : configKind === 'samba' ? 'Add Samba share' : 'Add NFS mount'}</h2></header>
       <div class="max-h-[calc(100vh-10rem)] space-y-3 overflow-y-auto p-4">
@@ -1938,7 +1959,7 @@
     </form>
   </dialog>
 
-  <dialog bind:this={ownerDialog} class="m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="owner-title">
+  <dialog bind:this={ownerDialog} class="app-dialog m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="owner-title">
     <div>
       <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="owner-title" class="font-semibold">Find owning package</h2><p class="text-xs text-surface-500">Enter a file path or an XBPS-compatible pattern.</p></header>
       <div class="space-y-3 p-4">

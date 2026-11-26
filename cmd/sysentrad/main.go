@@ -36,6 +36,7 @@ const introspection = `<node>
 	<method name="AuthorizeSession"/>
     <method name="PlanPackage"><arg direction="in" type="s" name="request"/><arg direction="out" type="s" name="plan"/></method>
     <method name="CommitPackage"><arg direction="in" type="s" name="requestId"/><arg direction="out" type="s" name="result"/></method>
+	<signal name="TransactionLog"><arg type="s" name="requestId"/><arg type="s" name="line"/></signal>
     <method name="ListServices"><arg direction="out" type="s" name="services"/></method>
     <method name="ServiceDetails"><arg direction="in" type="s" name="name"/><arg direction="out" type="s" name="details"/></method>
     <method name="ChangeService"><arg direction="in" type="s" name="request"/></method>
@@ -48,6 +49,7 @@ const introspection = `<node>
   </interface>` + introspect.IntrospectDataString + `</node>`
 
 type api struct {
+	connection   *dbus.Conn
 	packages     *daemon.Service
 	services     *daemon.ServiceController
 	config       *daemon.XBPSConfigController
@@ -79,7 +81,9 @@ func (a api) PlanPackage(sender dbus.Sender, payload string) (string, *dbus.Erro
 }
 
 func (a api) CommitPackage(sender dbus.Sender, requestID string) (string, *dbus.Error) {
-	result, err := a.packages.CommitPackage(context.Background(), string(sender), requestID)
+	result, err := a.packages.CommitPackageStreaming(context.Background(), string(sender), requestID, func(line string) {
+		a.emitTransactionLog(string(sender), requestID, line)
+	})
 	if err != nil {
 		return "", dbus.MakeFailedError(err)
 	}
@@ -88,6 +92,21 @@ func (a api) CommitPackage(sender dbus.Sender, requestID string) (string, *dbus.
 		return "", dbus.MakeFailedError(err)
 	}
 	return string(encoded), nil
+}
+
+func (a api) emitTransactionLog(destination, requestID, line string) {
+	message := &dbus.Message{
+		Type: dbus.TypeSignal,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface:   dbus.MakeVariant(interfaceName),
+			dbus.FieldMember:      dbus.MakeVariant("TransactionLog"),
+			dbus.FieldPath:        dbus.MakeVariant(objectPath),
+			dbus.FieldDestination: dbus.MakeVariant(destination),
+			dbus.FieldSignature:   dbus.MakeVariant(dbus.SignatureOf(requestID, line)),
+		},
+		Body: []any{requestID, line},
+	}
+	a.connection.Send(message, nil)
 }
 
 func (a api) ListServices() (string, *dbus.Error) {
@@ -190,7 +209,7 @@ func main() {
 	firewallInventory := firewall.NewInventory(commands)
 	firewallController := daemon.NewFirewallController(authorizer, firewall.NewManager(commands, firewallInventory, services.NewManager(commands, services.DefinitionsDir, services.EnabledDir)))
 	firmwareController := daemon.NewFirmwareController(authorizer, firmware.NewManager(commands))
-	if err := connection.Export(api{packages: packageService, services: serviceController, config: configController, systemConfig: systemConfigController, accounts: accountController, firewall: firewallController, firmware: firmwareController}, objectPath, interfaceName); err != nil {
+	if err := connection.Export(api{connection: connection, packages: packageService, services: serviceController, config: configController, systemConfig: systemConfigController, accounts: accountController, firewall: firewallController, firmware: firmwareController}, objectPath, interfaceName); err != nil {
 		log.Fatal(err)
 	}
 	if err := connection.Export(introspect.Introspectable(introspection), objectPath, "org.freedesktop.DBus.Introspectable"); err != nil {

@@ -28,6 +28,15 @@ type executorStub struct {
 	plan    transactions.Plan
 }
 
+type streamingExecutorStub struct{ executorStub }
+
+func (e *streamingExecutorStub) CommitStreaming(_ context.Context, plan transactions.Plan, output func(string)) (transactions.Result, error) {
+	e.commits++
+	e.plan = plan
+	output("installing firefox")
+	return transactions.Result{RequestID: plan.Request.RequestID, Operation: plan.Request.Operation}, nil
+}
+
 type auditStub struct{ events []AuditEvent }
 
 func (a *auditStub) Record(event AuditEvent) { a.events = append(a.events, event) }
@@ -106,5 +115,20 @@ func TestCommitPackageFailsClosedOnAuthorizationDenial(t *testing.T) {
 	}
 	if len(audit.events) != 2 || audit.events[1].Outcome != "denied" {
 		t.Fatalf("audit events = %#v", audit.events)
+	}
+}
+
+func TestCommitPackageStreamsExecutorOutput(t *testing.T) {
+	executor := &streamingExecutorStub{}
+	service := NewService(&authorizationStub{}, plannerStub{plan: transactions.Plan{ExpiresAt: time.Now().Add(time.Minute)}}, executor)
+	if _, err := service.PlanPackageRequest(context.Background(), ":1.42", `{"version":1,"requestId":"request-1234","operation":"install","packages":["firefox"]}`); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	if _, err := service.CommitPackageStreaming(context.Background(), ":1.42", "request-1234", func(line string) { lines = append(lines, line) }); err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0] != "installing firefox" {
+		t.Fatalf("lines = %#v", lines)
 	}
 }

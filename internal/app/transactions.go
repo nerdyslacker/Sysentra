@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sys/unix"
 	"sysentra/internal/flatpakplan"
 	"sysentra/internal/runner"
@@ -25,6 +26,21 @@ type packageTransactionClient interface {
 	AuthorizeSession(context.Context) error
 	Plan(context.Context, security.PackageRequest) (transactions.Plan, error)
 	Commit(context.Context, string) (transactions.Result, error)
+}
+
+type streamingPackageTransactionClient interface {
+	CommitStreaming(context.Context, string, func(string)) (transactions.Result, error)
+}
+
+const TransactionLogEventName = "transaction:log"
+
+type TransactionLogEvent struct {
+	RequestID string `json:"requestId"`
+	Line      string `json:"line"`
+}
+
+func init() {
+	application.RegisterEvent[TransactionLogEvent](TransactionLogEventName)
 }
 
 func (s *PackageTransactionService) AuthorizeSession() error {
@@ -75,10 +91,13 @@ type PackageTransactionService struct {
 	planner     flatpakTransactionPlanner
 	historyMu   sync.Mutex
 	historyPath string
+	emit        func(string, ...any) bool
 }
 
 func NewPackageTransactionService(client packageTransactionClient, commandRunner runner.Runner, planners ...flatpakTransactionPlanner) *PackageTransactionService {
-	service := &PackageTransactionService{client: client, runner: commandRunner, flatpak: make(map[string]flatpakTransaction), planned: make(map[string]string)}
+	service := &PackageTransactionService{client: client, runner: commandRunner, flatpak: make(map[string]flatpakTransaction), planned: make(map[string]string), emit: func(name string, data ...any) bool {
+		return application.Get().Event.Emit(name, data...)
+	}}
 	if len(planners) > 0 {
 		service.planner = planners[0]
 	}
@@ -285,13 +304,14 @@ func (s *PackageTransactionService) CommitPackage(requestID string) (PackageTran
 		delete(s.flatpak, requestID)
 	}
 	s.mu.Unlock()
+	emit := s.transactionOutput(requestID)
 	if isFlatpak {
 		if time.Now().After(flatpakPlan.expires) {
 			err := errors.New("Flatpak transaction preview expired")
 			s.recordTransaction(requestID, operation, "failed", err.Error())
 			return PackageTransactionResultView{}, err
 		}
-		result, err := s.runner.Run(context.Background(), flatpakPlan.command[0], flatpakPlan.command[1:]...)
+		result, err := runTransactionCommand(context.Background(), s.runner, flatpakPlan.command[0], flatpakPlan.command[1:], emit)
 		if err != nil {
 			message := strings.TrimSpace(string(result.Stderr))
 			if message == "" {
@@ -304,13 +324,37 @@ func (s *PackageTransactionService) CommitPackage(requestID string) (PackageTran
 		s.recordTransaction(requestID, operation, "completed", "")
 		return PackageTransactionResultView{RequestID: requestID, Operation: flatpakPlan.operation, Diagnostics: commandOutputLines(result)}, nil
 	}
-	result, err := s.client.Commit(context.Background(), requestID)
+	var result transactions.Result
+	var err error
+	if client, ok := s.client.(streamingPackageTransactionClient); ok {
+		result, err = client.CommitStreaming(context.Background(), requestID, emit)
+	} else {
+		result, err = s.client.Commit(context.Background(), requestID)
+	}
 	if err != nil {
 		s.recordTransaction(requestID, operation, "failed", err.Error())
 		return PackageTransactionResultView{}, err
 	}
 	s.recordTransaction(requestID, operation, "completed", "")
 	return PackageTransactionResultView{RequestID: result.RequestID, Operation: string(result.Operation), Diagnostics: result.Diagnostics}, nil
+}
+
+func (s *PackageTransactionService) transactionOutput(requestID string) func(string) {
+	lines := 0
+	return func(line string) {
+		if lines >= 500 {
+			return
+		}
+		lines++
+		s.emit(TransactionLogEventName, TransactionLogEvent{RequestID: requestID, Line: line})
+	}
+}
+
+func runTransactionCommand(ctx context.Context, commandRunner runner.Runner, name string, args []string, output func(string)) (runner.Result, error) {
+	if streaming, ok := commandRunner.(runner.StreamingRunner); ok {
+		return streaming.RunStreaming(ctx, name, args, output)
+	}
+	return commandRunner.Run(ctx, name, args...)
 }
 
 func commandOutputLines(result runner.Result) []string {

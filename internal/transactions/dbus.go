@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/godbus/dbus/v5"
 
@@ -250,9 +251,22 @@ func (c *DBusClient) Plan(ctx context.Context, request security.PackageRequest) 
 }
 
 func (c *DBusClient) Commit(ctx context.Context, requestID string) (Result, error) {
+	return c.CommitStreaming(ctx, requestID, nil)
+}
+
+func (c *DBusClient) CommitStreaming(ctx context.Context, requestID string, output func(string)) (Result, error) {
 	if c.err != nil {
 		return Result{}, fmt.Errorf("connect to system service: %w", c.err)
 	}
+	stop := func() {}
+	if output != nil {
+		var err error
+		stop, err = c.subscribeTransactionLogs(ctx, requestID, output)
+		if err != nil {
+			return Result{}, fmt.Errorf("subscribe to package transaction output: %w", err)
+		}
+	}
+	defer stop()
 	var encoded string
 	call := c.connection.Object(systemBusName, systemObjectPath).CallWithContext(ctx, systemInterface+".CommitPackage", 0, requestID)
 	if err := call.Store(&encoded); err != nil {
@@ -263,4 +277,44 @@ func (c *DBusClient) Commit(ctx context.Context, requestID string) (Result, erro
 		return Result{}, fmt.Errorf("decode package transaction result: %w", err)
 	}
 	return result, nil
+}
+
+func (c *DBusClient) subscribeTransactionLogs(ctx context.Context, requestID string, output func(string)) (func(), error) {
+	options := []dbus.MatchOption{
+		dbus.WithMatchSender(systemBusName),
+		dbus.WithMatchInterface(systemInterface),
+		dbus.WithMatchMember("TransactionLog"),
+		dbus.WithMatchObjectPath(systemObjectPath),
+		dbus.WithMatchArg(0, requestID),
+	}
+	if err := c.connection.AddMatchSignalContext(ctx, options...); err != nil {
+		return nil, err
+	}
+	signals := make(chan *dbus.Signal, 64)
+	c.connection.Signal(signals)
+	done := make(chan struct{})
+	var wait sync.WaitGroup
+	wait.Add(1)
+	go func() {
+		defer wait.Done()
+		for {
+			select {
+			case <-done:
+				return
+			case signal := <-signals:
+				if signal != nil && len(signal.Body) == 2 {
+					line, ok := signal.Body[1].(string)
+					if ok {
+						output(line)
+					}
+				}
+			}
+		}
+	}()
+	return func() {
+		_ = c.connection.RemoveMatchSignal(options...)
+		c.connection.RemoveSignal(signals)
+		close(done)
+		wait.Wait()
+	}, nil
 }

@@ -131,6 +131,9 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /'purge-kernels'/);
   assert.match(app, /on:click=\{\(\) => transactionLogsVisible = !transactionLogsVisible\}/);
   assert.match(app, /Logs/);
+  assert.match(app, /function autoScroll\(node: HTMLElement\)/);
+  assert.match(app, /observer\.observe\(node, \{ childList: true, characterData: true, subtree: true \}\)/);
+  assert.match(app, /<pre use:autoScroll/);
   assert.match(app, /transactionExecutionLogs = result\.diagnostics/);
   assert.match(app, /Additional source updates/);
   assert.match(app, /refreshUpgradeSourcePreview/);
@@ -205,6 +208,8 @@ test('themes dialogs and shows an explicit selected appearance mode', () => {
   assert.match(app, /role="tablist" aria-label="Settings sections"/);
   assert.match(app, /settingsTab: 'general' \| 'appearance' \| 'sources'/);
   assert.match(app, />General<\/button>[\s\S]*>Appearance<\/button>[\s\S]*>Additional sources<\/button>/);
-  assert.match(app, /max-h-\[calc\(100vh-2rem\)\] flex-col/);
+  assert.match(app, /class="dialog-frame"/);
   assert.match(app, /min-h-0[^"\n]*overflow-y-auto/);
+  assert.match(styles, /\.app-dialog\s*\{[^}]*max-height: calc\(100dvh - 2rem\);[^}]*overflow: hidden;/s);
+  assert.match(styles, /\.app-dialog > form > div,[\s\S]*overflow-y: auto;/);
 });

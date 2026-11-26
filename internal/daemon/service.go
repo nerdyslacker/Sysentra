@@ -38,6 +38,10 @@ type Executor interface {
 	Commit(context.Context, transactions.Plan) (transactions.Result, error)
 }
 
+type streamingExecutor interface {
+	CommitStreaming(context.Context, transactions.Plan, func(string)) (transactions.Result, error)
+}
+
 type pendingPlan struct {
 	sender string
 	plan   transactions.Plan
@@ -99,6 +103,10 @@ func (s *Service) PlanPackageRequest(ctx context.Context, sender, payload string
 }
 
 func (s *Service) CommitPackage(ctx context.Context, sender, requestID string) (transactions.Result, error) {
+	return s.CommitPackageStreaming(ctx, sender, requestID, nil)
+}
+
+func (s *Service) CommitPackageStreaming(ctx context.Context, sender, requestID string, output func(string)) (transactions.Result, error) {
 	s.mu.Lock()
 	pending, exists := s.plans[requestID]
 	if !exists || pending.sender != sender {
@@ -113,7 +121,13 @@ func (s *Service) CommitPackage(ctx context.Context, sender, requestID string) (
 		s.recordAudit("commit", "denied", sender, pending.plan.Request)
 		return transactions.Result{}, err
 	}
-	result, err := s.executor.Commit(ctx, pending.plan)
+	var result transactions.Result
+	var err error
+	if executor, ok := s.executor.(streamingExecutor); ok && output != nil {
+		result, err = executor.CommitStreaming(ctx, pending.plan, output)
+	} else {
+		result, err = s.executor.Commit(ctx, pending.plan)
+	}
 	if err != nil {
 		s.recordAudit("commit", "failed", sender, pending.plan.Request)
 		return transactions.Result{}, err

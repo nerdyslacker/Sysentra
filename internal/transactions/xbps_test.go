@@ -20,6 +20,13 @@ type plannerRunner struct {
 	err  error
 }
 
+type streamingPlannerRunner struct{ plannerRunner }
+
+func (r *streamingPlannerRunner) RunStreaming(ctx context.Context, name string, args []string, output func(string)) (runner.Result, error) {
+	output("native xbps output")
+	return r.Run(ctx, name, args...)
+}
+
 func (r *plannerRunner) Run(_ context.Context, name string, args ...string) (runner.Result, error) {
 	if name != xbpsQuery {
 		r.name, r.args = name, args
@@ -141,6 +148,20 @@ func TestXBPSExecutorRunsAllowlistedCommand(t *testing.T) {
 	}
 	if result.RequestID != "request-1234" || result.Operation != security.Reinstall {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestXBPSExecutorStreamsNativeCommandOutput(t *testing.T) {
+	command := &streamingPlannerRunner{}
+	now := time.Unix(100, 0)
+	executor := &XBPSExecutor{runner: command, fingerprint: func() (string, error) { return "state-a", nil }, now: func() time.Time { return now }, lockPath: t.TempDir() + "/xbps.lock"}
+	plan := Plan{Request: security.PackageRequest{Version: 1, RequestID: "request-1234", Operation: security.Reinstall, Packages: []string{"firefox"}}, StateFingerprint: "state-a", ExpiresAt: now.Add(time.Minute)}
+	var lines []string
+	if _, err := executor.CommitStreaming(context.Background(), plan, func(line string) { lines = append(lines, line) }); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(lines, []string{"native xbps output"}) {
+		t.Fatalf("lines = %#v", lines)
 	}
 }
 

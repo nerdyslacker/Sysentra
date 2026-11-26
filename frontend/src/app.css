@@ -459,6 +459,39 @@ input {
   font: inherit;
 }
 
+.app-dialog {
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+}
+
+.app-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-dialog > form,
+.app-dialog > div:not(.dialog-content) {
+  display: flex;
+  min-height: 0;
+  max-height: inherit;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.app-dialog header,
+.app-dialog footer,
+.app-dialog [role='tablist'] {
+  flex: 0 0 auto;
+}
+
+.app-dialog > form > div,
+.app-dialog > div:not(.dialog-content) > div:not([role='tablist']),
+.app-dialog > .dialog-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
 .font-size-input {
   appearance: textfield;
 }

@@ -63,6 +63,14 @@ func NewSystemXBPSExecutor(commandRunner runner.Runner) *XBPSExecutor {
 }
 
 func (e *XBPSExecutor) Commit(ctx context.Context, plan Plan) (Result, error) {
+	return e.commit(ctx, plan, nil)
+}
+
+func (e *XBPSExecutor) CommitStreaming(ctx context.Context, plan Plan, output func(string)) (Result, error) {
+	return e.commit(ctx, plan, output)
+}
+
+func (e *XBPSExecutor) commit(ctx context.Context, plan Plan, output func(string)) (Result, error) {
 	lock, err := acquireLock(ctx, e.lockPath)
 	if err != nil {
 		return Result{}, err
@@ -90,7 +98,7 @@ func (e *XBPSExecutor) Commit(ctx context.Context, plan Plan) (Result, error) {
 		}
 	}
 	if plan.Request.Operation == security.Downgrade {
-		return e.commitDowngrade(ctx, plan)
+		return e.commitDowngrade(ctx, plan, output)
 	}
 	if plan.Request.Operation == security.PurgeKernels {
 		if err := validateKernelPurge(ctx, e.runner, plan.Request.Packages); err != nil {
@@ -101,7 +109,7 @@ func (e *XBPSExecutor) Commit(ctx context.Context, plan Plan) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	commandResult, err := e.runner.Run(ctx, name, args...)
+	commandResult, err := runCommand(ctx, e.runner, name, args, output)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute %s: %w: %s", plan.Request.Operation, err, strings.TrimSpace(string(commandResult.Stderr)))
 	}
@@ -111,7 +119,7 @@ func (e *XBPSExecutor) Commit(ctx context.Context, plan Plan) (Result, error) {
 	return Result{RequestID: plan.Request.RequestID, Operation: plan.Request.Operation, Diagnostics: boundedLines(commandResult.Stdout, commandResult.Stderr)}, nil
 }
 
-func (e *XBPSExecutor) commitDowngrade(ctx context.Context, plan Plan) (Result, error) {
+func (e *XBPSExecutor) commitDowngrade(ctx context.Context, plan Plan, output func(string)) (Result, error) {
 	request := plan.Request
 	var target Change
 	for _, change := range plan.Changes {
@@ -132,11 +140,11 @@ func (e *XBPSExecutor) commitDowngrade(ctx context.Context, plan Plan) (Result, 
 		return Result{}, err
 	}
 	defer cleanup()
-	indexResult, err := e.runner.Run(ctx, xbpsRindex, "--add", stagedArchive)
+	indexResult, err := runCommand(ctx, e.runner, xbpsRindex, []string{"--add", stagedArchive}, output)
 	if err != nil {
 		return Result{}, fmt.Errorf("index cached package: %w: %s", err, strings.TrimSpace(string(indexResult.Stderr)))
 	}
-	result, err := e.runner.Run(ctx, xbpsInstall, "--yes", "--repository", repository, "--force", request.Packages[0]+"-"+request.TargetVersion)
+	result, err := runCommand(ctx, e.runner, xbpsInstall, []string{"--yes", "--repository", repository, "--force", request.Packages[0] + "-" + request.TargetVersion}, output)
 	if err != nil {
 		return Result{}, fmt.Errorf("execute downgrade: %w: %s", err, strings.TrimSpace(string(result.Stderr)))
 	}
@@ -144,6 +152,13 @@ func (e *XBPSExecutor) commitDowngrade(ctx context.Context, plan Plan) (Result, 
 		return Result{}, fmt.Errorf("verify downgrade: %w", err)
 	}
 	return Result{RequestID: request.RequestID, Operation: request.Operation, Diagnostics: boundedLines(indexResult.Stdout, indexResult.Stderr, result.Stdout, result.Stderr)}, nil
+}
+
+func runCommand(ctx context.Context, commandRunner runner.Runner, name string, args []string, output func(string)) (runner.Result, error) {
+	if streaming, ok := commandRunner.(runner.StreamingRunner); ok && output != nil {
+		return streaming.RunStreaming(ctx, name, args, output)
+	}
+	return commandRunner.Run(ctx, name, args...)
 }
 
 func (p *XBPSPlanner) planDowngrade(ctx context.Context, plan Plan) (Plan, error) {

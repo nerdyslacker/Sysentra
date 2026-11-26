@@ -25,6 +25,15 @@ type transactionRunnerStub struct {
 	result runner.Result
 }
 
+type streamingTransactionRunner struct{ transactionRunnerStub }
+
+func (s *streamingTransactionRunner) RunStreaming(_ context.Context, name string, args []string, output func(string)) (runner.Result, error) {
+	s.calls = append(s.calls, append([]string{name}, args...))
+	output("Downloading")
+	output("Installing")
+	return runner.Result{Stdout: []byte("Downloading\nInstalling\n")}, nil
+}
+
 type flatpakPlannerStub struct{ changes []flatpakplan.Change }
 
 func (stub flatpakPlannerStub) Preview(context.Context, []string, string, string, string) ([]flatpakplan.Change, error) {
@@ -108,6 +117,26 @@ func TestPackageTransactionServicePlansAndCommitsFlatpakOperation(t *testing.T) 
 	want := []string{"flatpak", "install", "--user", "--assumeyes", "--noninteractive", "flathub", "org.example.App"}
 	if len(commandRunner.calls) != 1 || !reflect.DeepEqual(commandRunner.calls[0], want) {
 		t.Fatalf("calls=%v want %v", commandRunner.calls, want)
+	}
+}
+
+func TestPackageTransactionServiceStreamsFlatpakOutput(t *testing.T) {
+	commandRunner := &streamingTransactionRunner{}
+	service := NewPackageTransactionService(&transactionClientStub{}, commandRunner)
+	var events []TransactionLogEvent
+	service.emit = func(_ string, data ...any) bool {
+		events = append(events, data[0].(TransactionLogEvent))
+		return true
+	}
+	plan, err := service.PreviewPackage("flatpak", "org.example.App", "install", "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CommitPackage(plan.RequestID); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0].RequestID != plan.RequestID || events[0].Line != "Downloading" || events[1].Line != "Installing" {
+		t.Fatalf("events = %#v", events)
 	}
 }
 
