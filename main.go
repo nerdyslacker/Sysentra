@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -16,6 +17,7 @@ import (
 
 	"sysentra/internal/accounts"
 	appservice "sysentra/internal/app"
+	"sysentra/internal/autostart"
 	"sysentra/internal/backends"
 	"sysentra/internal/desktopnotify"
 	"sysentra/internal/drivers"
@@ -45,6 +47,7 @@ var appIcon []byte
 const applicationID = "io.github.nerdyslacker.Sysentra"
 
 func main() {
+	background := backgroundMode(os.Args[1:])
 	inventoryService := appservice.NewInventoryService()
 	commandRunner := runner.Exec{}
 	packageService := appservice.NewPackageService(backends.NewSystemXBPS(commandRunner), backends.NewFlatpak(commandRunner, backends.WithFlathubMetadata("https://flathub.org/api/v2/appstream", &http.Client{Timeout: 5 * time.Second})))
@@ -81,6 +84,11 @@ func main() {
 	transactionClient := transactions.NewSystemDBusClient()
 	transactionService := appservice.NewPersistentPackageTransactionService(transactionClient, commandRunner, flatpakplan.New(commandRunner))
 	flatpakRemoteService := appservice.NewFlatpakRemoteService(flatpakremote.New(commandRunner))
+	autostartManager, err := autostart.New()
+	if err != nil {
+		log.Fatal(err)
+	}
+	autostartService := appservice.NewAutostartService(autostartManager)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
@@ -104,6 +112,7 @@ func main() {
 			application.NewService(repositoryTrustService),
 			application.NewService(transactionService),
 			application.NewService(flatpakRemoteService),
+			application.NewService(autostartService),
 			application.NewService(systemService),
 		},
 		Assets: application.AssetOptions{
@@ -120,6 +129,10 @@ func main() {
 		}
 	})
 
+	windowURL := "/"
+	if background {
+		windowURL = "/?background=1"
+	}
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Sysentra",
 		Width:            1180,
@@ -127,7 +140,8 @@ func main() {
 		MinWidth:         760,
 		MinHeight:        520,
 		BackgroundColour: application.NewRGB(20, 24, 31),
-		URL:              "/",
+		Hidden:           background,
+		URL:              windowURL,
 	})
 	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		window.Hide()
@@ -167,6 +181,10 @@ func updateStatusLabel(count int) string {
 		return "1 update available"
 	}
 	return fmt.Sprintf("%d updates available", count)
+}
+
+func backgroundMode(arguments []string) bool {
+	return slices.Contains(arguments, "--background")
 }
 
 type additionalSourceToggler interface {

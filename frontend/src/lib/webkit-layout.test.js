@@ -194,6 +194,10 @@ test('themes dialogs and shows an explicit selected appearance mode', () => {
   assert.match(app, /ListSystemFonts/);
   assert.match(app, /GetUpdatePreferences/);
   assert.match(app, /SetUpdatePreferences/);
+  assert.match(app, /GetAutostartEnabled/);
+  assert.match(app, /SetAutostartEnabled/);
+  assert.match(app, />Run in background at login</);
+  assert.match(app, /location\.search.*background/);
   assert.match(app, /PublishUpdateCount\(result\.packages\.length\)/);
   assert.match(app, />Update checks</);
   assert.match(app, />Desktop notifications</);

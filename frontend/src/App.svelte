@@ -9,6 +9,7 @@
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
   import { GetUpdatePreferences, PublishUpdateCount, SetUpdatePreferences } from '../bindings/sysentra/internal/app/updatemonitorservice';
+  import { GetAutostartEnabled, SetAutostartEnabled } from '../bindings/sysentra/internal/app/autostartservice';
   import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeFirmware, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaGlobal, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
@@ -214,6 +215,8 @@
   let settingsError = '';
   let updatePreferences = { scheduled: true, notifications: true, intervalMinutes: 360 };
   let updatePreferencesSaving = false;
+  let autostartEnabled = false;
+  let autostartSaving = false;
 
   $: normalizedQuery = globalQuery.trim().toLowerCase();
   $: flatpakSourceEnabled = additionalSources.find((source) => source.id === 'flatpak')?.enabled !== false;
@@ -235,7 +238,8 @@
   $: filteredGroups = groups.filter((item) => [item.name, String(item.gid), ...item.members].some((value) => value.toLowerCase().includes(normalizedQuery)));
 
   onMount(() => {
-    void AuthorizeSession().catch(() => {});
+    const backgroundLaunch = new URLSearchParams(window.location.search).has('background');
+    if (!backgroundLaunch) void AuthorizeSession().catch(() => {});
     let savedMode: string | null = null;
     try {
       savedMode = localStorage.getItem('sysentra-color-mode');
@@ -978,7 +982,7 @@
 
   async function openSettings() {
     settingsError = '';
-    await Promise.all([ListAdditionalSources().then((sources) => additionalSources = sources).catch(() => {}), GetUpdatePreferences().then((preferences) => updatePreferences = preferences).catch(() => {}), loadSystemFonts()]);
+    await Promise.all([ListAdditionalSources().then((sources) => additionalSources = sources).catch(() => {}), GetUpdatePreferences().then((preferences) => updatePreferences = preferences).catch(() => {}), GetAutostartEnabled().then((enabled) => autostartEnabled = enabled).catch(() => {}), loadSystemFonts()]);
     settingsDialog.showModal();
   }
 
@@ -992,6 +996,18 @@
       settingsError = error instanceof Error ? error.message : String(error);
     } finally {
       updatePreferencesSaving = false;
+    }
+  }
+
+  async function toggleAutostart() {
+    autostartSaving = true;
+    settingsError = '';
+    try {
+      autostartEnabled = await SetAutostartEnabled(!autostartEnabled);
+    } catch (error) {
+      settingsError = error instanceof Error ? error.message : String(error);
+    } finally {
+      autostartSaving = false;
     }
   }
 
@@ -1727,6 +1743,7 @@
         </section>
         <section aria-labelledby="update-checks-heading" class="space-y-3 border-t border-surface-300-700 pt-4">
           <div><h3 id="update-checks-heading" class="text-sm font-semibold">Update checks</h3><p class="text-xs text-surface-500">Check enabled package sources in the background.</p></div>
+          <div class="flex items-center gap-3"><button type="button" role="switch" aria-checked={autostartEnabled} aria-label="Run Sysentra in background at login" class="relative h-5 w-9 shrink-0 rounded-full transition-colors {autostartEnabled ? 'bg-success-600' : 'bg-surface-400'}" disabled={autostartSaving} on:click={toggleAutostart}><span class="absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform {autostartEnabled ? 'translate-x-4' : ''}"></span></button><div><p class="text-sm font-medium">Run in background at login</p><p class="text-xs text-surface-500">Start hidden in the system tray when you sign in.</p></div></div>
           <div class="flex items-center gap-3"><button type="button" role="switch" aria-checked={updatePreferences.scheduled} aria-label="Scheduled update checks" class="relative h-5 w-9 shrink-0 rounded-full transition-colors {updatePreferences.scheduled ? 'bg-success-600' : 'bg-surface-400'}" disabled={updatePreferencesSaving} on:click={() => saveUpdatePreferences({ scheduled: !updatePreferences.scheduled })}><span class="absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform {updatePreferences.scheduled ? 'translate-x-4' : ''}"></span></button><div><p class="text-sm font-medium">Scheduled checks</p><p class="text-xs text-surface-500">Runs while Sysentra remains in the system tray.</p></div></div>
           <div class="flex items-center gap-3"><button type="button" role="switch" aria-checked={updatePreferences.notifications} aria-label="Desktop notifications" class="relative h-5 w-9 shrink-0 rounded-full transition-colors {updatePreferences.notifications ? 'bg-success-600' : 'bg-surface-400'}" disabled={updatePreferencesSaving || !updatePreferences.scheduled} on:click={() => saveUpdatePreferences({ notifications: !updatePreferences.notifications })}><span class="absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform {updatePreferences.notifications ? 'translate-x-4' : ''}"></span></button><div><p class="text-sm font-medium">Desktop notifications</p><p class="text-xs text-surface-500">Notify only when scheduled checks find updates.</p></div></div>
           <label class="block text-sm"><span class="mb-1 block text-xs font-medium text-surface-600-400">Check interval</span><select class="select app-input-surface w-full" value={updatePreferences.intervalMinutes} disabled={updatePreferencesSaving || !updatePreferences.scheduled} on:change={(event) => saveUpdatePreferences({ intervalMinutes: Number(event.currentTarget.value) })}><option value="15">Every 15 minutes</option><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every day</option><option value="10080">Every week</option></select></label>
