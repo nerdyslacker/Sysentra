@@ -8,6 +8,7 @@
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewDriverRemoval, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
   import { ChangeFlatpakRemote, ListFlatpakRemotes } from '../bindings/sysentra/internal/app/flatpakremoteservice';
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
+  import { GetUpdatePreferences, PublishUpdateCount, SetUpdatePreferences } from '../bindings/sysentra/internal/app/updatemonitorservice';
   import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeFirmware, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaGlobal, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
@@ -211,6 +212,8 @@
   let additionalSources: AdditionalSourceView[] = [];
   let sourceSaving = '';
   let settingsError = '';
+  let updatePreferences = { scheduled: true, notifications: true, intervalMinutes: 360 };
+  let updatePreferencesSaving = false;
 
   $: normalizedQuery = globalQuery.trim().toLowerCase();
   $: flatpakSourceEnabled = additionalSources.find((source) => source.id === 'flatpak')?.enabled !== false;
@@ -389,7 +392,10 @@
           packages = result.packages;
           packageResultCount = result.packages.length;
           catalogWarnings = result.warnings;
-          if (view === 'Updates') updateCount = result.packages.length;
+          if (view === 'Updates') {
+            updateCount = result.packages.length;
+            void PublishUpdateCount(result.packages.length).catch(() => {});
+          }
           if (selectedPackage) {
             selectedPackage = result.packages.find((pkg) => pkg.backendId === selectedPackage?.backendId && pkg.id === selectedPackage?.id) ?? selectedPackage;
           }
@@ -424,6 +430,7 @@
     ListUpdates().then((result) => {
       updateCount = result.packages.length;
       packageCache.Updates = { packages: result.packages, warnings: result.warnings };
+      void PublishUpdateCount(result.packages.length).catch(() => {});
     }).catch(() => {});
   }
 
@@ -971,8 +978,21 @@
 
   async function openSettings() {
     settingsError = '';
-    await Promise.all([ListAdditionalSources().then((sources) => additionalSources = sources).catch(() => {}), loadSystemFonts()]);
+    await Promise.all([ListAdditionalSources().then((sources) => additionalSources = sources).catch(() => {}), GetUpdatePreferences().then((preferences) => updatePreferences = preferences).catch(() => {}), loadSystemFonts()]);
     settingsDialog.showModal();
+  }
+
+  async function saveUpdatePreferences(changes: Partial<typeof updatePreferences>) {
+    updatePreferencesSaving = true;
+    settingsError = '';
+    const next = { ...updatePreferences, ...changes };
+    try {
+      updatePreferences = await SetUpdatePreferences(next.scheduled, next.notifications, next.intervalMinutes);
+    } catch (error) {
+      settingsError = error instanceof Error ? error.message : String(error);
+    } finally {
+      updatePreferencesSaving = false;
+    }
   }
 
   async function loadSystemFonts() {
@@ -1687,10 +1707,10 @@
     <span class="ml-auto">{systemName}</span>
   </footer>
 
-  <dialog bind:this={settingsDialog} class="m-auto w-[min(34rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="settings-title">
-    <div>
-      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="settings-title" class="font-semibold">Settings</h2><p class="text-xs text-surface-500">Appearance and optional package sources.</p></header>
-      <div class="space-y-5 p-4">
+  <dialog bind:this={settingsDialog} class="m-auto w-[min(34rem,calc(100%-2rem))] overflow-hidden rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="settings-title">
+    <div class="flex max-h-[calc(100vh-2rem)] flex-col">
+      <header class="shrink-0 border-b border-surface-300-700 px-4 py-3"><h2 id="settings-title" class="font-semibold">Settings</h2><p class="text-xs text-surface-500">Appearance, package sources, and update checks.</p></header>
+      <div class="min-h-0 space-y-5 overflow-y-auto p-4">
         <section aria-labelledby="appearance-heading" class="space-y-3">
           <h3 id="appearance-heading" class="text-sm font-semibold">Appearance</h3>
           <fieldset><legend class="mb-1 text-xs font-medium text-surface-600-400">Color mode</legend><div class="grid grid-cols-3 gap-1 rounded-base bg-surface-200-800 p-1">{#each ['auto', 'light', 'dark'] as mode}<button type="button" class="settings-mode-choice {colorMode === mode ? 'settings-mode-active' : ''}" aria-pressed={colorMode === mode} on:click={() => setColorMode(mode as 'auto' | 'light' | 'dark')}>{#if colorMode === mode}<svg viewBox="0 0 20 20" class="size-3.5" aria-hidden="true"><path d="m4.5 10.5 3.3 3.2 7.7-8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{/if}<span>{mode === 'auto' ? 'System' : mode}</span></button>{/each}</div></fieldset>
@@ -1704,10 +1724,16 @@
         <section aria-labelledby="sources-heading" class="space-y-2 border-t border-surface-300-700 pt-4">
           <div><h3 id="sources-heading" class="text-sm font-semibold">Additional package sources</h3><p class="text-xs text-surface-500">Disabled sources are not queried or shown in package lists.</p></div>
           {#each additionalSources as source}<div class="flex items-center gap-3 rounded-base border border-surface-300-700 px-3 py-2"><div class="min-w-0 flex-1"><p class="text-sm font-medium">{source.name}</p><p class="text-xs text-surface-500">Optional {source.id} catalog</p></div><button type="button" role="switch" aria-checked={source.enabled} aria-label={`${source.enabled ? 'Disable' : 'Enable'} ${source.name}`} class="relative h-5 w-9 shrink-0 rounded-full transition-colors {source.enabled ? 'bg-success-600' : 'bg-surface-400'}" disabled={sourceSaving === source.id} on:click={() => toggleAdditionalSource(source)}><span class="absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform {source.enabled ? 'translate-x-4' : ''}"></span></button></div>{:else}<p class="text-sm text-surface-500">No optional package sources are configured.</p>{/each}
-          {#if settingsError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{settingsError}</p>{/if}
         </section>
+        <section aria-labelledby="update-checks-heading" class="space-y-3 border-t border-surface-300-700 pt-4">
+          <div><h3 id="update-checks-heading" class="text-sm font-semibold">Update checks</h3><p class="text-xs text-surface-500">Check enabled package sources in the background.</p></div>
+          <div class="flex items-center gap-3"><button type="button" role="switch" aria-checked={updatePreferences.scheduled} aria-label="Scheduled update checks" class="relative h-5 w-9 shrink-0 rounded-full transition-colors {updatePreferences.scheduled ? 'bg-success-600' : 'bg-surface-400'}" disabled={updatePreferencesSaving} on:click={() => saveUpdatePreferences({ scheduled: !updatePreferences.scheduled })}><span class="absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform {updatePreferences.scheduled ? 'translate-x-4' : ''}"></span></button><div><p class="text-sm font-medium">Scheduled checks</p><p class="text-xs text-surface-500">Runs while Sysentra remains in the system tray.</p></div></div>
+          <div class="flex items-center gap-3"><button type="button" role="switch" aria-checked={updatePreferences.notifications} aria-label="Desktop notifications" class="relative h-5 w-9 shrink-0 rounded-full transition-colors {updatePreferences.notifications ? 'bg-success-600' : 'bg-surface-400'}" disabled={updatePreferencesSaving || !updatePreferences.scheduled} on:click={() => saveUpdatePreferences({ notifications: !updatePreferences.notifications })}><span class="absolute left-0.5 top-0.5 size-4 rounded-full bg-white shadow transition-transform {updatePreferences.notifications ? 'translate-x-4' : ''}"></span></button><div><p class="text-sm font-medium">Desktop notifications</p><p class="text-xs text-surface-500">Notify only when scheduled checks find updates.</p></div></div>
+          <label class="block text-sm"><span class="mb-1 block text-xs font-medium text-surface-600-400">Check interval</span><select class="select app-input-surface w-full" value={updatePreferences.intervalMinutes} disabled={updatePreferencesSaving || !updatePreferences.scheduled} on:change={(event) => saveUpdatePreferences({ intervalMinutes: Number(event.currentTarget.value) })}><option value="15">Every 15 minutes</option><option value="60">Every hour</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every day</option><option value="10080">Every week</option></select></label>
+        </section>
+        {#if settingsError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{settingsError}</p>{/if}
       </div>
-      <footer class="flex justify-end border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" on:click={() => settingsDialog.close()}>Close</button></footer>
+      <footer class="flex shrink-0 justify-end border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" on:click={() => settingsDialog.close()}>Close</button></footer>
     </div>
   </dialog>
 

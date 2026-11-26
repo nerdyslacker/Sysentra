@@ -192,4 +192,12 @@ test('themes dialogs and shows an explicit selected appearance mode', () => {
   assert.match(app, /<NavigationIcon name="Settings" \/>Settings/);
   assert.match(app, /\['Verify package database',[\s\S]*\['Find owning package',[\s\S]*\['Remove orphans',[\s\S]*\['Clean package cache',[\s\S]*\['Clean unused Flatpaks',/);
   assert.match(app, /ListSystemFonts/);
+  assert.match(app, /GetUpdatePreferences/);
+  assert.match(app, /SetUpdatePreferences/);
+  assert.match(app, /PublishUpdateCount\(result\.packages\.length\)/);
+  assert.match(app, />Update checks</);
+  assert.match(app, />Desktop notifications</);
+  assert.match(app, />Check interval</);
+  assert.match(app, /max-h-\[calc\(100vh-2rem\)\] flex-col/);
+  assert.match(app, /min-h-0[^"\n]*overflow-y-auto/);
 });

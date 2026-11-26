@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,10 +12,12 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"sysentra/internal/accounts"
 	appservice "sysentra/internal/app"
 	"sysentra/internal/backends"
+	"sysentra/internal/desktopnotify"
 	"sysentra/internal/drivers"
 	"sysentra/internal/firewall"
 	"sysentra/internal/firmware"
@@ -28,6 +32,7 @@ import (
 	"sysentra/internal/settings"
 	"sysentra/internal/shares"
 	"sysentra/internal/transactions"
+	"sysentra/internal/trayicon"
 	"sysentra/internal/xbpsconfig"
 )
 
@@ -44,6 +49,33 @@ func main() {
 	commandRunner := runner.Exec{}
 	packageService := appservice.NewPackageService(backends.NewSystemXBPS(commandRunner), backends.NewFlatpak(commandRunner, backends.WithFlathubMetadata("https://flathub.org/api/v2/appstream", &http.Client{Timeout: 5 * time.Second})))
 	disableUnavailableFlatpak(packageService, exec.LookPath)
+	monitorContext, stopMonitor := context.WithCancel(context.Background())
+	var tray *application.SystemTray
+	var trayMenu *application.Menu
+	var trayStatus *application.MenuItem
+	updateMonitor, err := appservice.NewUpdateMonitorService(monitorContext, packageService, settings.NewUpdateChecksStore(), func(result appservice.UpdateCheckResultView, notify bool) {
+		label := updateStatusLabel(result.Total)
+		icon := appIcon
+		if result.Total > 0 {
+			if updateIcon, err := trayicon.Updates(appIcon, result.Total); err == nil {
+				icon = updateIcon
+			} else {
+				log.Printf("render update tray icon: %v", err)
+			}
+		}
+		tray.SetIcon(icon)
+		trayStatus.SetLabel(label)
+		trayMenu.Update()
+		tray.SetTooltip(label)
+		if notify {
+			if err := desktopnotify.Send("Software updates available", label); err != nil {
+				log.Printf("update notification: %v", err)
+			}
+		}
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	repositoryTrustService := appservice.NewRepositoryTrustService(repositories.NewTrustInspector(commandRunner, &http.Client{Timeout: 15 * time.Second}))
 	fontService := appservice.NewFontService(fonts.NewInventory(commandRunner))
 	transactionClient := transactions.NewSystemDBusClient()
@@ -68,6 +100,7 @@ func main() {
 			application.NewService(inventoryService),
 			application.NewService(fontService),
 			application.NewService(packageService),
+			application.NewService(updateMonitor),
 			application.NewService(repositoryTrustService),
 			application.NewService(transactionService),
 			application.NewService(flatpakRemoteService),
@@ -77,7 +110,7 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 	app.OnShutdown(func() {
@@ -87,7 +120,7 @@ func main() {
 		}
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Sysentra",
 		Width:            1180,
 		Height:           760,
@@ -96,10 +129,44 @@ func main() {
 		BackgroundColour: application.NewRGB(20, 24, 31),
 		URL:              "/",
 	})
+	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		window.Hide()
+		event.Cancel()
+	})
+
+	tray = app.SystemTray.New()
+	tray.SetIcon(appIcon)
+	tray.SetLabel("Sysentra")
+	tray.SetTooltip("Updates not checked")
+	trayMenu = app.NewMenu()
+	trayStatus = trayMenu.Add("Updates not checked").SetEnabled(false)
+	trayMenu.Add("Check for updates").OnClick(func(*application.Context) {
+		go func() {
+			if _, err := updateMonitor.CheckForUpdates(); err != nil {
+				log.Printf("check for updates: %v", err)
+			}
+		}()
+	})
+	trayMenu.Add("Show Sysentra").OnClick(func(*application.Context) { window.Show().Focus() })
+	trayMenu.AddSeparator()
+	trayMenu.Add("Quit").OnClick(func(*application.Context) { app.Quit() })
+	tray.SetMenu(trayMenu)
+	tray.OnClick(func() { window.Show().Focus() })
+	app.OnShutdown(stopMonitor)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func updateStatusLabel(count int) string {
+	if count == 0 {
+		return "System is up to date"
+	}
+	if count == 1 {
+		return "1 update available"
+	}
+	return fmt.Sprintf("%d updates available", count)
 }
 
 type additionalSourceToggler interface {
