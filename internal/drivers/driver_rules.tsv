@@ -1,37 +1,558 @@
 # bus	vendor:device	module	Void package	description
-USB	0BDA:8812	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
-USB	0BDA:881C	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
-USB	2357:0101	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
-USB	2357:010D	8812au	rtl8812au-dkms	Realtek RTL8812AU USB Wi-Fi driver
-USB	0BDA:0811	8821au	rtl8821au-dkms	Realtek RTL8811AU/RTL8821AU USB Wi-Fi driver
-USB	0BDA:0821	8821au	rtl8821au-dkms	Realtek RTL8811AU/RTL8821AU USB Wi-Fi driver
-USB	0BDA:8822	8821au	rtl8821au-dkms	Realtek RTL8811AU/RTL8821AU USB Wi-Fi driver
-USB	0BDA:8811	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
-USB	0BDA:C811	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
-USB	0BDA:C820	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
-USB	0BDA:C821	8821cu	rtl8821cu-dkms	Realtek RTL8811CU/RTL8821CU USB Wi-Fi driver
-USB	0BDA:B812	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
-USB	0BDA:B82C	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
-USB	2357:0115	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
-USB	2357:012D	88x2bu	rtl8822bu-dkms	Realtek RTL8822BU USB Wi-Fi driver
-PCI	14E4:0576	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4311	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4312	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4313	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4315	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4328	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4329	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:432A	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:432B	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:432C	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:432D	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4353	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4357	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4358	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4359	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:435A	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4365	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:43A0	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:43B1	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:4727	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
-PCI	14E4:A99D	wl	broadcom-wl-dkms	Broadcom proprietary Wi-Fi driver
+PCI	0001:8168	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	0B48:7922	mt7921e	linux-firmware-network	MediaTek MT7921 PCIe Wi-Fi
+PCI	10EC:0E10	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:2502	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:2600	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:3000	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:5000	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8125	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8126	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8127	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8129	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8136	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8161	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8162	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8167	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8168	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8169	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	10EC:8852	rtw89_8852ae	linux-firmware-network	Realtek RTL8852AE PCIe Wi-Fi
+PCI	10EC:A85A	rtw89_8852ae	linux-firmware-network	Realtek RTL8852AE PCIe Wi-Fi
+PCI	10EC:B821	rtw88_8821ce	linux-firmware-network	Realtek RTL8821CE PCIe Wi-Fi
+PCI	10EC:B822	rtw88_8822be	linux-firmware-network	Realtek RTL8822BE PCIe Wi-Fi
+PCI	10EC:B851	rtw89_8851be	linux-firmware-network	Realtek RTL8851BE PCIe Wi-Fi
+PCI	10EC:B852	rtw89_8852be	linux-firmware-network	Realtek RTL8852BE PCIe Wi-Fi
+PCI	10EC:B85B	rtw89_8852be	linux-firmware-network	Realtek RTL8852BE PCIe Wi-Fi
+PCI	10EC:C821	rtw88_8821ce	linux-firmware-network	Realtek RTL8821CE PCIe Wi-Fi
+PCI	10EC:C822	rtw88_8822ce	linux-firmware-network	Realtek RTL8822CE PCIe Wi-Fi
+PCI	10EC:C82F	rtw88_8822ce	linux-firmware-network	Realtek RTL8822CE PCIe Wi-Fi
+PCI	10EC:C852	rtw89_8852ce	linux-firmware-network	Realtek RTL8852CE PCIe Wi-Fi
+PCI	10EC:D723	rtw88_8723de	linux-firmware-network	Realtek RTL8723DE PCIe Wi-Fi
+PCI	10FF:8168	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	1186:4300	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	1186:4302	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	1259:C107	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	14C3:0608	mt7921e	linux-firmware-network	MediaTek MT7921 PCIe Wi-Fi
+PCI	14C3:0616	mt7921e	linux-firmware-network	MediaTek MT7921 PCIe Wi-Fi
+PCI	14C3:0717	mt7925e	linux-firmware-network	MediaTek MT7925 PCIe Wi-Fi
+PCI	14C3:0738	mt7925e	linux-firmware-network	MediaTek MT7925 PCIe Wi-Fi
+PCI	14C3:6639	mt7925e	linux-firmware-network	MediaTek MT7925 PCIe Wi-Fi
+PCI	14C3:7902	mt7921e	linux-firmware-network	MediaTek MT7921 PCIe Wi-Fi
+PCI	14C3:7920	mt7921e	linux-firmware-network	MediaTek MT7921 PCIe Wi-Fi
+PCI	14C3:7922	mt7921e	linux-firmware-network	MediaTek MT7921 PCIe Wi-Fi
+PCI	14C3:7925	mt7925e	linux-firmware-network	MediaTek MT7925 PCIe Wi-Fi
+PCI	14C3:7927	mt7925e	linux-firmware-network	MediaTek MT7925 PCIe Wi-Fi
+PCI	14C3:7928	mt7925e	linux-firmware-network	MediaTek MT7925 PCIe Wi-Fi
+PCI	14C3:7935	mt7925e	linux-firmware-network	MediaTek MT7925 PCIe Wi-Fi
+PCI	14C3:7961	mt7921e	linux-firmware-network	MediaTek MT7921 PCIe Wi-Fi
+PCI	14E4:4354	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4355	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4365	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43A3	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43BA	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43BB	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43BC	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43C3	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43C4	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43C5	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43CA	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43CB	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43CC	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43D3	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43D9	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43DC	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43E9	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43EC	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:43EF	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:440D	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4415	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4417	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4425	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4433	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4464	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:4488	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:449D	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:AA31	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	14E4:AA52	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+PCI	16EC:0116	r8169	linux-firmware-network	Realtek PCIe Ethernet
+PCI	1737:1032	r8169	linux-firmware-network	Realtek PCIe Ethernet
+SDIO	024C:D723	rtw88_8723ds	linux-firmware-network	Realtek RTL8723DS SDIO Wi-Fi
+SDIO	024C:D724	rtw88_8723ds	linux-firmware-network	Realtek RTL8723DS SDIO Wi-Fi
+SDIO	02D0:4324	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4329	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4330	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4334	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4335	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4339	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4345	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4354	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4355	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4356	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4359	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:4373	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A804	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A887	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A94C	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A94D	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A962	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A9A4	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A9A6	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A9AF	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:A9BF	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:AAE7	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	02D0:AAE8	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+SDIO	037A:7901	mt7921s	linux-firmware-network	MediaTek MT7921 SDIO Wi-Fi
+SDIO	037A:7902	mt7921s	linux-firmware-network	MediaTek MT7921 SDIO Wi-Fi
+SDIO	04B4:BD3D	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	03F0:CA02	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0409:0408	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0411:0242	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0411:025D	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0411:029B	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0411:0312	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	0411:03A6	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	0411:03D0	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0411:03D1	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	043E:3101	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	044E:3001	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	044E:3002	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	045E:02E6	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	045E:02FE	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	045E:07AB	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	045E:07C6	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	045E:0927	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	045E:0C5E	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0471:0215	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	0471:2126	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0471:7600	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	04B4:0BDC	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	04B4:BD29	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	04BB:094C	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	04BB:0950	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	04BB:0951	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	04BB:0952	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	04BB:0953	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	04BF:030A	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	04CA:8602	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	04E8:A101	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	04F2:AFF7	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	04F2:AFF8	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	04F2:AFF9	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	04F2:AFFA	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	04F2:AFFB	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	04F2:AFFC	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	050D:1004	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	050D:1102	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	050D:1106	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	050D:1109	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	050D:11F2	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	050D:2102	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	050D:2103	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	050D:705E	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	056E:4007	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	056E:4008	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	056E:400A	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	056E:400B	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	056E:400D	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	056E:400E	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	056E:400F	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	056E:4011	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	056E:4020	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	056E:4024	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	057C:3800	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	057C:8502	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	057C:8503	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0586:341F	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0586:3425	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0586:3426	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0586:3428	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	05AC:8213	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	05AC:8215	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	05AC:8218	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	05AC:821A	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	05AC:821B	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	05AC:821F	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	05AC:8281	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	06F8:E033	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	06F8:E035	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0769:11F2	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0789:010C	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0789:016D	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0789:016E	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	07AA:0056	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	07B8:7610	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	07B8:8178	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	07B8:8179	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	07B8:8189	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	07B8:8812	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0846:4260	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0846:6100	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0846:6A00	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0846:9014	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0846:9021	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0846:9041	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0846:9043	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0846:9050	mt7925u	linux-firmware-network	MediaTek MT7925 USB Wi-Fi
+USB	0846:9051	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0846:9052	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0846:9053	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0846:9054	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	0846:9055	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0846:9060	mt7921u	linux-firmware-network	MediaTek MT7921 USB Wi-Fi
+USB	0846:9065	mt7921u	linux-firmware-network	MediaTek MT7921 USB Wi-Fi
+USB	0846:9072	mt7925u	linux-firmware-network	MediaTek MT7925 USB Wi-Fi
+USB	0846:F001	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0955:09FF	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0A5C:0BDC	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	0A5C:21E1	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	0A5C:BD17	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	0A5C:BD1E	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	0A5C:BD1F	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	0A5C:BD27	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	0B05:171D	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0B05:17AB	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0B05:17BA	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0B05:17D1	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0B05:17D2	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0B05:17D3	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	0B05:17DB	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0B05:17EB	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0B05:180B	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0B05:1817	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	0B05:1833	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0B05:1841	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0B05:184C	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0B05:1852	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	0B05:1853	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	0B05:1870	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0B05:1874	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0B05:18F0	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0B05:18F1	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0B05:1976	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0B05:1997	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	0B05:19AA	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0B05:1A62	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0B05:1CB6	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0BDA:0179	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:018A	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:0724	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:0811	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0BDA:0820	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0BDA:0821	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0BDA:0823	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0BDA:1724	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:1E1E	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:2005	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:2006	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:2102	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0BDA:2E2E	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:317F	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:318B	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:5088	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8050	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:8053	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:8152	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:8153	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:8155	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:8156	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:8157	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:815A	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	0BDA:8170	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8176	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8177	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8178	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8179	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:817A	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:817B	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:817C	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:817D	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:817E	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:817F	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8186	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8187	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0BDA:8189	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0BDA:818A	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:818B	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:818C	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8191	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8197	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0BDA:8198	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0BDA:819A	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8724	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8731	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:8754	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:8811	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:8812	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0BDA:8813	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	0BDA:881A	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0BDA:881B	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0BDA:881C	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0BDA:8822	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0BDA:8832	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	0BDA:885A	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	0BDA:885C	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	0BDA:A811	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0BDA:A85B	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0BDA:B711	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:B720	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:B812	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0BDA:B81A	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0BDA:B820	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:B82B	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:B82C	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0BDA:B831	rtw89_8851bu	linux-firmware-network	Realtek RTL8851BU USB Wi-Fi
+USB	0BDA:B832	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0BDA:B83A	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0BDA:B851	rtw89_8851bu	linux-firmware-network	Realtek RTL8851BU USB Wi-Fi
+USB	0BDA:B852	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0BDA:B85A	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0BDA:C80C	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:C811	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:C812	rtw88_8822cu	linux-firmware-network	Realtek RTL8822CU USB Wi-Fi
+USB	0BDA:C820	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:C821	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:C82A	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:C82B	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	0BDA:C82C	rtw88_8822cu	linux-firmware-network	Realtek RTL8822CU USB Wi-Fi
+USB	0BDA:C82E	rtw88_8822cu	linux-firmware-network	Realtek RTL8822CU USB Wi-Fi
+USB	0BDA:C832	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	0BDA:C85A	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	0BDA:C85D	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	0BDA:D723	rtw88_8723du	linux-firmware-network	Realtek RTL8723DU USB Wi-Fi
+USB	0BDA:D820	rtw88_8822cu	linux-firmware-network	Realtek RTL8822CU USB Wi-Fi
+USB	0BDA:D82B	rtw88_8822cu	linux-firmware-network	Realtek RTL8822CU USB Wi-Fi
+USB	0BDA:F179	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:F192	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDA:FFEF	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0BDB:1002	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	0C10:0000	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	0DB0:6931	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0DB0:991D	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	0DB0:F0C8	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	0DF6:000D	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0DF6:0028	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0DF6:0029	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	0DF6:0052	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0DF6:005C	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0DF6:0061	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0DF6:0070	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0DF6:0074	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0DF6:0075	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0DF6:0076	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0DF6:0077	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0DF6:0079	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0E66:0019	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0E66:0020	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	0E66:0022	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	0E66:0023	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	0E66:0025	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	0E66:0026	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	0E8D:6639	mt7925u	linux-firmware-network	MediaTek MT7925 USB Wi-Fi
+USB	0E8D:760A	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	0E8D:760B	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	0E8D:7610	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0E8D:7612	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0E8D:7630	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0E8D:7632	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	0E8D:763F	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	0E8D:7650	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	0E8D:7902	mt7921u	linux-firmware-network	MediaTek MT7921 USB Wi-Fi
+USB	0E8D:7925	mt7925u	linux-firmware-network	MediaTek MT7925 USB Wi-Fi
+USB	0E8D:7961	mt7921u	linux-firmware-network	MediaTek MT7921 USB Wi-Fi
+USB	0EB0:9071	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	103C:1629	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	1058:0631	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	1058:0632	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	114B:0150	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	1371:9401	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	13B1:0039	brcmfmac	linux-firmware-broadcom	Broadcom FullMAC Wi-Fi
+USB	13B1:003E	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	13B1:003F	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	13B1:0041	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	13B1:0043	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	13B1:0043	rtw88_8822cu	linux-firmware-network	Realtek RTL8822CU USB Wi-Fi
+USB	13B1:0045	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	13D1:ABE6	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	13D3:3357	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	13D3:3358	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	13D3:3359	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	13D3:3431	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	13D3:3434	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	148F:7601	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	148F:760A	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	148F:760A	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	148F:760B	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	148F:760C	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	148F:760D	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	148F:7610	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	148F:761A	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	148F:9097	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	1737:0073	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	1740:0100	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	17EF:304F	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:3054	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:3062	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:3069	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:3082	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:3098	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:7205	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:720C	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:7214	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:721E	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:A359	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	17EF:A387	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	18E8:6232	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	19FF:0239	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	1B75:8187	rtl8187	-	Realtek RTL8187 USB Wi-Fi
+USB	2001:3307	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:3308	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:3309	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:330A	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:330B	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:330D	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:330E	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2001:330F	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:3310	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:3311	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:3312	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:3313	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2001:3314	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	2001:3315	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2001:3316	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2001:3318	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	2001:3319	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:331A	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	2001:331B	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:331C	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2001:331D	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	2001:331E	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2001:331F	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2001:3321	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	2001:3322	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2001:3323	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	2001:3327	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	2001:3328	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2001:3329	rtw88_8822cu	linux-firmware-network	Realtek RTL8822CU USB Wi-Fi
+USB	2001:332A	rtw89_8851bu	linux-firmware-network	Realtek RTL8851BU USB Wi-Fi
+USB	2001:332C	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	2001:3D02	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	2001:3D04	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	2001:B301	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	2019:1201	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2019:4902	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2019:AB2A	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2019:AB2B	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2019:AB2E	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2019:AB30	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2019:AB31	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	2019:AB32	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	2019:AB33	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2019:ED17	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	20F4:624D	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	20F4:648B	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	20F4:804B	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	20F4:805A	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	20F4:805B	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	20F4:806B	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	20F4:808A	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	20F4:809A	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	20F4:809B	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	20F4:E02B	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	20F4:E02C	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	2357:0100	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:0101	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2357:0103	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2357:0105	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	2357:0106	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	2357:0107	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:0108	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:0109	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:010B	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	2357:010C	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:010D	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2357:010E	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2357:010F	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2357:0111	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:0115	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2357:0116	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2357:0117	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2357:011E	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	2357:011F	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	2357:0120	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	2357:0122	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2357:0123	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	2357:0126	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:012D	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2357:012E	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2357:0135	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2357:0137	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	2357:0138	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2357:013F	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	2357:0140	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	2357:0141	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	2357:0601	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	2357:0602	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	2604:0012	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	2717:4106	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	28DE:2432	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	293C:5702	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	2955:0001	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	2955:1001	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	2955:1003	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	2A5F:1000	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	2C4E:0100	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2C4E:0102	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2C4E:0103	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	2C4E:0104	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	2C4E:0105	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	2C4E:0107	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2C4E:010A	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	2C4E:0128	rtw89_8851bu	linux-firmware-network	Realtek RTL8851BU USB Wi-Fi
+USB	2C7C:8206	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	3574:6121	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	3574:6211	mt7921u	linux-firmware-network	MediaTek MT7921 USB Wi-Fi
+USB	35B2:0502	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	35BC:0100	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	35BC:0101	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	35BC:0102	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	35BC:0107	mt7921u	linux-firmware-network	MediaTek MT7921 USB Wi-Fi
+USB	35BC:0108	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	3625:010B	rtw89_8851bu	linux-firmware-network	Realtek RTL8851BU USB Wi-Fi
+USB	3625:010D	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	3625:010F	rtw89_8852au	linux-firmware-network	Realtek RTL8852AU USB Wi-Fi
+USB	37AD:0103	rtw89_8852cu	linux-firmware-network	Realtek RTL8852CU USB Wi-Fi
+USB	3823:6249	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	413C:B097	r8152	linux-firmware-network	Realtek USB Ethernet
+USB	4855:0090	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	4855:0091	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	4856:0091	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	7392:6822	rtw89_8852bu	linux-firmware-network	Realtek RTL8852BU USB Wi-Fi
+USB	7392:7710	mt7601u	linux-firmware-network	MediaTek MT7601U USB Wi-Fi
+USB	7392:7811	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	7392:7822	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	7392:A611	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	7392:A711	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	7392:A811	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	7392:A812	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	7392:A813	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	7392:A822	rtw88_8812au	linux-firmware-network	Realtek RTL8812AU USB Wi-Fi
+USB	7392:A833	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	7392:A834	rtw88_8814au	linux-firmware-network	Realtek RTL8814AU USB Wi-Fi
+USB	7392:B611	rtw88_8821au	linux-firmware-network	Realtek RTL8821AU USB Wi-Fi
+USB	7392:B711	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	7392:B711	mt76x2u	linux-firmware-network	MediaTek MT76x2 USB Wi-Fi
+USB	7392:B722	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	7392:B811	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	7392:B822	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	7392:C711	mt76x0u	linux-firmware-network	MediaTek MT76x0 USB Wi-Fi
+USB	7392:C811	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	7392:C822	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	7392:D611	rtw88_8723du	linux-firmware-network	Realtek RTL8723DU USB Wi-Fi
+USB	7392:D811	rtw88_8821cu	linux-firmware-network	Realtek RTL8821CU USB Wi-Fi
+USB	7392:D822	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	7392:E611	rtw89_8851bu	linux-firmware-network	Realtek RTL8851BU USB Wi-Fi
+USB	7392:E822	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	7392:F822	rtw88_8822bu	linux-firmware-network	Realtek RTL8822BU USB Wi-Fi
+USB	8087:0A5A	btusb	linux-firmware-network	USB Bluetooth adapter
+USB	9846:9041	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi
+USB	CDAB:8010	rtl8xxxu	linux-firmware-network	Realtek USB Wi-Fi

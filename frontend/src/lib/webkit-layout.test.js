@@ -125,6 +125,8 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /driverCategory === 'Active' \? Boolean\(item\.driver\)/);
   assert.doesNotMatch(app, />Active modules</);
   assert.match(app, /PreviewDriverRemoval\(packageName, module\)/);
+  assert.match(app, /if \(action === 'remove' && candidate\.module\)/);
+  assert.match(app, /openNamedPackageTransaction\([^;]*\[candidate\.package\], action\)/s);
   assert.match(app, /ChangeTurnstileReady\(operation, names\)/);
   assert.match(app, /UpdateTurnstileEnvironment\(values\)/);
   assert.match(app, />Boot images <span/);
@@ -155,6 +157,19 @@ test('keeps system tables scrollable and exposes requested management sections',
   assert.match(styles, /\.samba-grid\s*\{[^}]*10rem;[^}]*gap: 0\.75rem/s);
   assert.match(styles, /\.nfs-grid\s*\{[^}]*15rem;[^}]*gap: 0\.75rem/s);
   assert.match(styles, /\.firmware-grid\s*\{[^}]*9\.5rem 6rem;[^}]*gap: 0\.75rem/s);
+  assert.match(styles, /\.driver-table-grid\s*\{[^}]*width: 100%;[^}]*table-layout: fixed;[^}]*border-collapse: collapse;/s);
+  assert.match(styles, /\.driver-table-grid th,[\s\S]*\.driver-table-grid td\s*\{[^}]*overflow: hidden;[^}]*text-align: left;/s);
+  assert.match(styles, /@container driver-table \(max-width: 850px\)[\s\S]*\.driver-bus\s*\{[^}]*display: none/);
+  assert.match(styles, /@container driver-table \(max-width: 680px\)[\s\S]*\.driver-kernel\s*\{[^}]*display: none/);
+  assert.match(styles, /@container driver-table \(max-width: 620px\)[\s\S]*\.driver-status-column\s*\{[^}]*width: 7rem/);
+  assert.doesNotMatch(app, /driver-candidate-reason/);
+  assert.match(app, /<table class="driver-table-grid text-left"><colgroup>/);
+  assert.match(styles, /@container driver-table \(max-width: 460px\)[\s\S]*\.driver-status/);
+  assert.match(app, /class="driver-status"><span class="inline-block max-w-full truncate/);
+  assert.match(app, /space-y-1 overflow-hidden/);
+  assert.match(app, /<th class="driver-bus">Bus \/ ID<\/th><th class="driver-kernel">Kernel driver<\/th>/);
+  assert.match(app, /class="driver-bus truncate font-mono text-xs"[^>]*>\{device\.bus\} \{device\.id\}<\/td>/);
+  assert.match(app, /class="driver-kernel truncate font-mono text-xs"[^>]*>\{device\.driver \|\| '—'\}<\/td>/);
   assert.match(app, /samba-grid package-table-header sticky/);
   assert.match(app, /nfs-grid package-table-header sticky/);
   assert.match(app, /firmware-grid package-table-header sticky/);

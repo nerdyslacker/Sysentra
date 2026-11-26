@@ -66,3 +66,27 @@ func TestDoesNotOfferUnmodelledDriverSwitch(t *testing.T) {
 		t.Fatalf("candidate = %#v", devices[0].Candidates[0])
 	}
 }
+
+func TestAddsVoidFirmwareForDetectedGPUVendor(t *testing.T) {
+	command := evidenceRunner{
+		"xbps-query -R -p pkgver linux-firmware-nvidia": {Stdout: []byte("linux-firmware-nvidia-20260810_1\n")},
+	}
+	devices := []Device{{Bus: "PCI", ID: "10DE:2684", Category: "Video", Name: "NVIDIA graphics", Driver: "nouveau"}}
+
+	enrichVendorFirmware(context.Background(), command, devices)
+	if len(devices[0].Candidates) != 1 || devices[0].Candidates[0].Package != "linux-firmware-nvidia" || !devices[0].Candidates[0].CanInstall || devices[0].Candidates[0].CanRemove || devices[0].Candidates[0].Module != "" || devices[0].Candidates[0].Reason != "" {
+		t.Fatalf("candidate = %#v", devices[0].Candidates)
+	}
+}
+
+func TestAddsVoidFirmwareForDetectedWiFiVendor(t *testing.T) {
+	command := evidenceRunner{
+		"xbps-query -R -p pkgver linux-firmware-broadcom": {Stdout: []byte("linux-firmware-broadcom-20260810_1\n")},
+	}
+	devices := []Device{{Bus: "SDIO", ID: "02D0:A9A6", Category: "Wi-Fi", Driver: "brcmfmac"}}
+
+	enrichVendorFirmware(context.Background(), command, devices)
+	if len(devices[0].Candidates) != 1 || devices[0].Candidates[0].Package != "linux-firmware-broadcom" || !devices[0].Candidates[0].CanInstall || devices[0].Candidates[0].CanRemove {
+		t.Fatalf("candidate = %#v", devices[0].Candidates)
+	}
+}

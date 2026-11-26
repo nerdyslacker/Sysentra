@@ -82,6 +82,43 @@ func enrichRecommendations(ctx context.Context, command runner.Runner, rules []r
 	}
 }
 
+func enrichVendorFirmware(ctx context.Context, command runner.Runner, devices []Device) {
+	for index := range devices {
+		packageName := firmwarePackage(devices[index])
+		if packageName == "" {
+			continue
+		}
+		installedVersion, installed := packageVersion(ctx, command, false, packageName)
+		repositoryVersion, available := packageVersion(ctx, command, true, packageName)
+		if !installed && !available {
+			continue
+		}
+		evidence := devices[index].Bus + " vendor " + devices[index].ID[:4] + " and " + devices[index].Category + " device class; package verified in Void repositories"
+		devices[index].Candidates = append(devices[index].Candidates, Candidate{
+			Package: packageName, Version: installedVersion, NewVersion: repositoryVersion,
+			Description: "Void Linux firmware for detected hardware", Evidence: evidence,
+			Available: available, Installed: installed, CanInstall: available && !installed, CanUpdate: installed && available && installedVersion != repositoryVersion,
+		})
+	}
+}
+
+func firmwarePackage(device Device) string {
+	if len(device.ID) < 4 {
+		return ""
+	}
+	vendor := strings.ToUpper(device.ID[:4])
+	if device.Bus == "PCI" && device.Category == "Video" {
+		return map[string]string{"1002": "linux-firmware-amd", "10DE": "linux-firmware-nvidia", "8086": "linux-firmware-intel"}[vendor]
+	}
+	if device.Category == "Wi-Fi" {
+		if vendor == "14E4" || vendor == "02D0" {
+			return "linux-firmware-broadcom"
+		}
+		return map[string]string{"0BDA": "linux-firmware-network", "10EC": "linux-firmware-network", "168C": "linux-firmware-network", "8086": "linux-firmware-network"}[vendor]
+	}
+	return ""
+}
+
 func packageVersion(ctx context.Context, command runner.Runner, repository bool, name string) (string, bool) {
 	args := []string{"-p", "pkgver", name}
 	if repository {

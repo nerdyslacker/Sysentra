@@ -1,6 +1,7 @@
 package drivers
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -93,5 +94,27 @@ func TestReportsDKMSModulesMissingFromInstalledKernels(t *testing.T) {
 	warnings := missingDKMSBuilds(status, []string{"6.6.70_1", "6.12.10_1"})
 	if len(warnings) != 2 || warnings[0] != "DKMS module nvidia/580.1 is not installed for kernel 6.6.70_1 (built)" || warnings[1] != "DKMS module rtl8821cu/5.12 is missing for kernel 6.6.70_1" {
 		t.Fatalf("warnings = %#v", warnings)
+	}
+}
+
+func TestDiscoversQEMUGuestToolsFromDMIAndEnabledRepository(t *testing.T) {
+	root := t.TempDir()
+	dmi := filepath.Join(root, "class", "dmi", "id")
+	if err := os.MkdirAll(dmi, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dmi, "sys_vendor"), []byte("QEMU\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dmi, "product_name"), []byte("Standard PC (Q35 + ICH9, 2009)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	command := evidenceRunner{
+		"xbps-query -R -p pkgver qemu-ga": {Stdout: []byte("qemu-ga-11.1.3_2\n")},
+	}
+
+	devices := scanVirtualGuest(context.Background(), command, root)
+	if len(devices) != 1 || devices[0].Bus != "Virtual" || devices[0].ID != "qemu" || devices[0].Name != "QEMU/KVM guest" || len(devices[0].Candidates) != 1 || devices[0].Candidates[0].Package != "qemu-ga" || devices[0].Candidates[0].Module != "" || !devices[0].Candidates[0].CanInstall {
+		t.Fatalf("devices = %#v", devices)
 	}
 }

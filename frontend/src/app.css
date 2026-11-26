@@ -281,8 +281,37 @@ select option {
   grid-template-columns: minmax(8rem, 1.2fr) minmax(6rem, 0.7fr) minmax(8rem, 1fr) 9rem;
 }
 
-.driver-grid {
-  grid-template-columns: minmax(10rem, 1.5fr) minmax(8rem, 0.7fr) minmax(7rem, 0.7fr) minmax(11rem, 1fr) auto;
+.driver-table-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.driver-table {
+  container-name: driver-table;
+  container-type: inline-size;
+}
+
+.driver-table-grid th,
+.driver-table-grid td {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.driver-device-column {
+  width: 32%;
+}
+
+.driver-bus-column,
+.driver-kernel-column {
+  width: 9rem;
+}
+
+.driver-status-column {
+  width: 10rem;
 }
 
 .system-table {
@@ -409,12 +438,6 @@ select option {
   .firmware-grid {
     grid-template-columns: minmax(7rem, 1fr) minmax(5rem, 0.7fr) 9.5rem 6rem;
   }
-  .driver-grid {
-    grid-template-columns: minmax(8rem, 1fr) minmax(7rem, 0.7fr) minmax(10rem, 1fr) auto;
-  }
-  .driver-bus {
-    display: none;
-  }
   .service-grid {
     grid-template-columns: minmax(7rem, 1fr) 6rem 4rem 4rem 4rem;
   }
@@ -460,6 +483,39 @@ select option {
   }
   .mirror-region,
   .mirror-tier {
+    display: none;
+  }
+}
+
+@container driver-table (max-width: 850px) {
+  .driver-device-column {
+    width: 42%;
+  }
+  .driver-bus {
+    display: none;
+  }
+}
+
+@container driver-table (max-width: 680px) {
+  .driver-device-column {
+    width: 50%;
+  }
+  .driver-kernel {
+    display: none;
+  }
+}
+
+@container driver-table (max-width: 620px) {
+  .driver-device-column {
+    width: 52%;
+  }
+  .driver-status-column {
+    width: 7rem;
+  }
+}
+
+@container driver-table (max-width: 460px) {
+  .driver-status {
     display: none;
   }
 }

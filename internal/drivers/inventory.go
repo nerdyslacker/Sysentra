@@ -59,12 +59,14 @@ func (i *Inventory) List(ctx context.Context) (Catalog, error) {
 	}
 	catalog.Devices = append(catalog.Devices, usb...)
 	catalog.Devices = append(catalog.Devices, scanSDIO("/sys")...)
+	catalog.Devices = append(catalog.Devices, scanVirtualGuest(ctx, i.runner, "/sys")...)
 	rules, err := parseRules(defaultRules)
 	if err != nil {
 		catalog.Warnings = append(catalog.Warnings, "Driver evidence database could not be read")
 	} else {
 		enrichRecommendations(ctx, i.runner, rules, catalog.Devices)
 	}
+	enrichVendorFirmware(ctx, i.runner, catalog.Devices)
 	catalog.Modules = activeModules(catalog.Devices)
 	diagnostics, warnings := driverDiagnostics(ctx, i.runner)
 	catalog.Diagnostics = diagnostics
@@ -177,6 +179,33 @@ func sdioID(value string) (string, bool) {
 		return "", false
 	}
 	return strings.ToUpper(value), true
+}
+
+func scanVirtualGuest(ctx context.Context, command runner.Runner, root string) []Device {
+	vendor := strings.ToLower(readTrimmed(filepath.Join(root, "class", "dmi", "id", "sys_vendor")))
+	product := strings.ToLower(readTrimmed(filepath.Join(root, "class", "dmi", "id", "product_name")))
+	identity := vendor + " " + product
+	guests := []struct{ term, id, name, packageName string }{
+		{"vmware", "vmware", "VMware guest", "open-vm-tools"},
+		{"virtualbox", "virtualbox", "VirtualBox guest", "virtualbox-ose-guest"},
+		{"innotek", "virtualbox", "VirtualBox guest", "virtualbox-ose-guest"},
+		{"qemu", "qemu", "QEMU/KVM guest", "qemu-ga"},
+		{"kvm", "qemu", "QEMU/KVM guest", "qemu-ga"},
+	}
+	for _, guest := range guests {
+		if !strings.Contains(identity, guest.term) {
+			continue
+		}
+		installedVersion, installed := packageVersion(ctx, command, false, guest.packageName)
+		repositoryVersion, available := packageVersion(ctx, command, true, guest.packageName)
+		if !installed && !available {
+			return nil
+		}
+		evidence := "DMI identifies a " + guest.name
+		candidate := Candidate{Package: guest.packageName, Version: installedVersion, NewVersion: repositoryVersion, Description: guest.name + " integration tools", Evidence: evidence, Available: available, Installed: installed, CanInstall: available && !installed, CanUpdate: installed && available && installedVersion != repositoryVersion, CanRemove: installed}
+		return []Device{{Category: "Other", Bus: "Virtual", ID: guest.id, Name: guest.name, Evidence: evidence, Candidates: []Candidate{candidate}}}
+	}
+	return nil
 }
 
 func usbInterfaceData(root, device string) ([]string, []string) {
@@ -335,6 +364,14 @@ func nameCategory(name string) string {
 }
 
 func (d Device) Status() string {
+	if d.Bus == "Virtual" {
+		for _, candidate := range d.Candidates {
+			if candidate.Installed {
+				return "Guest tools installed"
+			}
+		}
+		return "Guest tools available"
+	}
 	if d.Driver != "" {
 		return "Driver active"
 	}
