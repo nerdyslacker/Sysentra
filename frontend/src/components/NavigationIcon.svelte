@@ -19,6 +19,8 @@
     <path d="M4 7h10M4 17h16M17 7h3M4 12h4M11 12h9"/><circle cx="15.5" cy="7" r="1.5"/><circle cx="9.5" cy="12" r="1.5"/>
   {:else if name === 'Users & Groups'}
     <circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-3.6 2.3-5.5 5.5-5.5s5 1.9 5.5 5.5M15.5 5.5a3 3 0 0 1 0 5.8M16 14c2.6.4 4 2 4.5 5"/>
+  {:else if name === 'Environment'}
+    <path d="M4 5h16v14H4zM7 9l2 2-2 2M11 14h5"/>
   {:else if name === 'Firewall'}
     <path d="M12 3.5 19 6v5.5c0 4.2-2.4 7.2-7 9-4.6-1.8-7-4.8-7-9V6Z"/><path d="M8 9h8M8 13h8M10 9v4M14 9v4"/>
   {:else if name === 'Samba Server'}

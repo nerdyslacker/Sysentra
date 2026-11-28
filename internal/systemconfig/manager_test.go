@@ -429,3 +429,23 @@ func TestManagerRejectsUnverifiedGRUBDefault(t *testing.T) {
 		t.Fatalf("defaults were not rolled back: %q", contents)
 	}
 }
+
+func TestChangesGlobalEnvironmentWithoutDroppingComments(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "environment")
+	if err := os.WriteFile(path, []byte("# locale\nLANG=en_US.UTF-8\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(successfulRunner{}, filepath.Join(root, "xbps"), filepath.Join(root, "vendor"), filepath.Join(root, "smb"), filepath.Join(root, "fstab"))
+	manager.environment = path
+	if err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.EnvironmentGlobalSet, Value: "EDITOR", Path: "helix --tutor"}); err != nil {
+		t.Fatal(err)
+	}
+	contents, _ := os.ReadFile(path)
+	if !strings.Contains(string(contents), "# locale\n") || !strings.Contains(string(contents), `EDITOR="helix --tutor"`) {
+		t.Fatalf("contents = %q", contents)
+	}
+	if err := manager.Change(security.SystemConfigRequest{Version: security.APIVersion, Operation: security.EnvironmentGlobalRemove, Value: "EDITOR"}); err != nil {
+		t.Fatal(err)
+	}
+}

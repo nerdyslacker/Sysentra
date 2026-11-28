@@ -21,6 +21,7 @@ import (
 	"sysentra/internal/backends"
 	"sysentra/internal/desktopnotify"
 	"sysentra/internal/drivers"
+	"sysentra/internal/environment"
 	"sysentra/internal/firewall"
 	"sysentra/internal/firmware"
 	"sysentra/internal/flatpakplan"
@@ -95,6 +96,7 @@ func main() {
 	}
 	userServiceRoot := filepath.Join(home, "service")
 	turnstileRoot := filepath.Join(home, ".config", "service")
+	environmentService := appservice.NewEnvironmentService(environment.NewManager(home), transactionClient)
 	systemService := appservice.NewSystemService(kernel.NewInventory(commandRunner), repositories.NewInventory(commandRunner), mirrors.NewClient(), settings.NewMirrorRecoveryStore(), xbpsconfig.NewInventory(), firmware.NewInventory(commandRunner), firewall.NewInventory(commandRunner), drivers.NewInventory(commandRunner), transactionClient, services.NewUserInventory(commandRunner, userServiceRoot, "/proc"), services.NewUserManager(commandRunner, userServiceRoot), services.NewUserInventory(commandRunner, turnstileRoot, "/proc"), services.NewTurnstileManager(commandRunner, turnstileRoot), shares.NewInventory(), accounts.NewInventory())
 	app := application.New(application.Options{
 		Name:        "Sysentra",
@@ -114,6 +116,7 @@ func main() {
 			application.NewService(flatpakRemoteService),
 			application.NewService(autostartService),
 			application.NewService(systemService),
+			application.NewService(environmentService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

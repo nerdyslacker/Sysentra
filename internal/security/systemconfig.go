@@ -13,29 +13,32 @@ const SystemConfigManagementAction = "io.github.nerdyslacker.sysentra.manage-sys
 type SystemConfigOperation string
 
 const (
-	RepositoryAdd     SystemConfigOperation = "repository-add"
-	RepositoryEdit    SystemConfigOperation = "repository-edit"
-	RepositoryRemove  SystemConfigOperation = "repository-remove"
-	RepositoryEnable  SystemConfigOperation = "repository-enable"
-	RepositoryDisable SystemConfigOperation = "repository-disable"
-	MirrorUse         SystemConfigOperation = "mirror-use"
-	MirrorReset       SystemConfigOperation = "mirror-reset"
-	SambaAdd          SystemConfigOperation = "samba-add"
-	SambaEdit         SystemConfigOperation = "samba-edit"
-	SambaRemove       SystemConfigOperation = "samba-remove"
-	SambaGlobalSet    SystemConfigOperation = "samba-global-set"
-	NFSAdd            SystemConfigOperation = "nfs-add"
-	NFSEdit           SystemConfigOperation = "nfs-edit"
-	NFSRemove         SystemConfigOperation = "nfs-remove"
-	NFSMount          SystemConfigOperation = "nfs-mount"
-	NFSUnmount        SystemConfigOperation = "nfs-unmount"
-	KernelSetDefault  SystemConfigOperation = "kernel-set-default"
+	RepositoryAdd           SystemConfigOperation = "repository-add"
+	RepositoryEdit          SystemConfigOperation = "repository-edit"
+	RepositoryRemove        SystemConfigOperation = "repository-remove"
+	RepositoryEnable        SystemConfigOperation = "repository-enable"
+	RepositoryDisable       SystemConfigOperation = "repository-disable"
+	MirrorUse               SystemConfigOperation = "mirror-use"
+	MirrorReset             SystemConfigOperation = "mirror-reset"
+	SambaAdd                SystemConfigOperation = "samba-add"
+	SambaEdit               SystemConfigOperation = "samba-edit"
+	SambaRemove             SystemConfigOperation = "samba-remove"
+	SambaGlobalSet          SystemConfigOperation = "samba-global-set"
+	NFSAdd                  SystemConfigOperation = "nfs-add"
+	NFSEdit                 SystemConfigOperation = "nfs-edit"
+	NFSRemove               SystemConfigOperation = "nfs-remove"
+	NFSMount                SystemConfigOperation = "nfs-mount"
+	NFSUnmount              SystemConfigOperation = "nfs-unmount"
+	KernelSetDefault        SystemConfigOperation = "kernel-set-default"
+	EnvironmentGlobalSet    SystemConfigOperation = "environment-global-set"
+	EnvironmentGlobalRemove SystemConfigOperation = "environment-global-remove"
 )
 
 var shareNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _.-]{0,63}$`)
 var xbpsConfigFilePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.conf$`)
 var sambaPrincipalPattern = regexp.MustCompile(`^[@+&]?[A-Za-z0-9_.-]+\$?$`)
 var sambaAccountPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*\$?$`)
+var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
 type SystemConfigRequest struct {
 	Version        int                   `json:"version"`
@@ -118,6 +121,14 @@ func (r SystemConfigRequest) Validate() error {
 	case KernelSetDefault:
 		if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`).MatchString(r.Value) {
 			return errors.New("a valid installed kernel version is required")
+		}
+	case EnvironmentGlobalSet:
+		if !environmentNamePattern.MatchString(r.Value) || (r.OldValue != "" && !environmentNamePattern.MatchString(r.OldValue)) || len(r.Path) > 4096 || strings.ContainsAny(r.Path, "\x00\r\n") {
+			return errors.New("a valid environment variable name and single-line value are required")
+		}
+	case EnvironmentGlobalRemove:
+		if !environmentNamePattern.MatchString(r.Value) || r.Path != "" {
+			return errors.New("a valid environment variable name is required")
 		}
 	default:
 		return errors.New("unsupported system configuration operation")

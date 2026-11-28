@@ -23,6 +23,7 @@ Sysentra is a software and system management center for Void Linux and derivativ
 - Manage XBPS repositories, mirrors, and package rules.
 - Inspect firmware and hardware drivers.
 - Inspect firewall rules and manage Samba shares, NFS mounts, users, and groups.
+- Manage global, Bash, Zsh, and Fish environment variables.
 - Preview privileged changes before polkit authorization.
 - Minimize package transactions to a live bottom-right progress widget while using the rest of the app.
 - Choose light, dark, or system appearance with selectable themes and fonts.

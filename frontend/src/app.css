@@ -438,6 +438,29 @@ select option {
   scrollbar-gutter: stable;
 }
 
+.environment-table-grid {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.environment-table-grid th,
+.environment-table-grid td {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.5rem 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.environment-scope-column { width: 6rem; }
+.environment-name-column { width: 22%; }
+.environment-file-column { width: 28%; }
+.environment-actions-column { width: 10rem; }
+
+@media (max-width: 900px) {
+  .environment-file { display: none; }
+}
+
 .service-grid {
   grid-template-columns: minmax(8rem, 1fr) 7rem 5rem 4rem minmax(10rem, 1.6fr) 5rem;
 }

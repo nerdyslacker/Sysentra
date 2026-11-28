@@ -46,3 +46,19 @@ func TestSystemConfigRequestValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestGlobalEnvironmentRequestValidation(t *testing.T) {
+	valid := SystemConfigRequest{Version: APIVersion, Operation: EnvironmentGlobalSet, Value: "EDITOR", OldValue: "EDITOR", Path: "helix --tutor"}
+	if err := valid.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []SystemConfigRequest{
+		{Version: APIVersion, Operation: EnvironmentGlobalSet, Value: "BAD-NAME", Path: "x"},
+		{Version: APIVersion, Operation: EnvironmentGlobalSet, Value: "GOOD", Path: "line\nbreak"},
+		{Version: APIVersion, Operation: EnvironmentGlobalRemove, Value: "1BAD"},
+	} {
+		if err := request.Validate(); err == nil {
+			t.Fatalf("accepted %#v", request)
+		}
+	}
+}

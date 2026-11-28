@@ -27,6 +27,7 @@ test('prevents document-controlled navigation and embedded content', () => {
 
 test('keeps package search input responsive and exposes gated detail actions', () => {
   const app = readFileSync(new URL('../App.svelte', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
   const details = readFileSync(new URL('../components/PackageDetailsSidebar.svelte', import.meta.url), 'utf8');
   const component = readFileSync(new URL('../components/VirtualPackageTable.svelte', import.meta.url), 'utf8');
 
@@ -86,6 +87,11 @@ test('keeps package search input responsive and exposes gated detail actions', (
   assert.match(app, /<details class="account-actions relative">/);
   assert.match(app, /No supplementary groups to unassign/);
   assert.match(app, /System accounts cannot be removed/);
+  assert.match(app, /'Environment'/);
+  assert.match(app, /ListEnvironmentVariables\(\)/);
+  assert.match(app, /ChangeEnvironmentVariable\(environmentTargetScope, 'set',[^;]*environmentSourceFile\)/);
+  assert.match(app, /<table class="environment-table-grid text-left"><colgroup>/);
+  assert.match(styles, /\.environment-table-grid\s*\{[^}]*table-layout: fixed/s);
   assert.match(app, /GetFirewall\(firewallSelectedBackend\)/);
   assert.match(app, /ChangeFirewall\(firewallChange/);
   assert.match(app, /aria-label="Installed firewall backends"/);

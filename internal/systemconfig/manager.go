@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,10 +27,11 @@ type Manager struct {
 	mounts                      string
 	bootRoot, efiMount          string
 	grubDefaults                string
+	environment                 string
 }
 
 func NewManager(commandRunner runner.Runner, configurationDir, vendorDir, sambaConfig, fstab string) *Manager {
-	return &Manager{runner: commandRunner, configurationDir: configurationDir, vendorDir: vendorDir, sambaConfig: sambaConfig, fstab: fstab, mounts: "/proc/self/mounts", bootRoot: "/boot", efiMount: "/boot/efi", grubDefaults: "/etc/default/grub"}
+	return &Manager{runner: commandRunner, configurationDir: configurationDir, vendorDir: vendorDir, sambaConfig: sambaConfig, fstab: fstab, mounts: "/proc/self/mounts", bootRoot: "/boot", efiMount: "/boot/efi", grubDefaults: "/etc/default/grub", environment: "/etc/environment"}
 }
 
 func (m *Manager) Change(request security.SystemConfigRequest) error {
@@ -55,9 +57,45 @@ func (m *Manager) Change(request security.SystemConfigRequest) error {
 		return m.unmountNFS(request)
 	case security.KernelSetDefault:
 		return m.setDefaultKernel(request.Value)
+	case security.EnvironmentGlobalSet, security.EnvironmentGlobalRemove:
+		return m.changeEnvironment(request)
 	default:
 		return errors.New("unsupported system configuration operation")
 	}
+}
+
+func (m *Manager) changeEnvironment(request security.SystemConfigRequest) error {
+	contents, err := readRegular(m.environment)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimRight(string(contents), "\n"), "\n")
+	target := request.Value
+	if request.OldValue != "" {
+		target = request.OldValue
+	}
+	index := -1
+	for current, line := range lines {
+		name, _, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && name == target {
+			index = current
+			break
+		}
+	}
+	if request.Operation == security.EnvironmentGlobalRemove {
+		if index < 0 {
+			return errors.New("global environment variable was not found")
+		}
+		lines = append(lines[:index], lines[index+1:]...)
+	} else {
+		line := request.Value + "=" + strconv.Quote(request.Path)
+		if index < 0 {
+			lines = append(lines, line)
+		} else {
+			lines[index] = line
+		}
+	}
+	return writeWithBackup(m.environment, []byte(strings.Trim(strings.Join(lines, "\n"), "\n")+"\n"))
 }
 
 func (m *Manager) changeRepository(request security.SystemConfigRequest) error {

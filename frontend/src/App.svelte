@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { Browser, Events } from '@wailsio/runtime';
 
-  import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, SambaShareView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
+  import type { AccountHistoryView, AdditionalSourceView, DriverDeviceView, EnvironmentVariableView, FirewallChangeInput, FirewallRuleView, FirewallView, FirmwareDeviceView, FlatpakRemoteView, GroupView, KernelStatusView, KernelView, MirrorView, NFSMountView, PackageDetailsView, PackageTransactionPlanView, PackageView, RepositoryKeyView, RepositoryView, SambaServerView, SambaShareView, ServiceDetailsView, ServiceView, TransactionHistoryView, UserView, XBPSConfigRuleView } from '../bindings/sysentra/internal/app/models';
   import { Discover, FindOwningPackage, GetPackageDetails, ListAdditionalSources, ListInstalled, ListUpdates, SetAdditionalSourceEnabled } from '../bindings/sysentra/internal/app/packageservice';
   import { ListSystemFonts } from '../bindings/sysentra/internal/app/fontservice';
   import { AuthorizeSession, CommitPackage, ListTransactionHistory, PreviewDatabaseSync, PreviewDowngrade, PreviewDriverRemoval, PreviewFlatpakCleanup, PreviewMaintenance, PreviewPackage, PreviewPackages, PreviewSystemUpgrade } from '../bindings/sysentra/internal/app/packagetransactionservice';
@@ -10,6 +10,7 @@
   import { InspectRepositoryKey } from '../bindings/sysentra/internal/app/repositorytrustservice';
   import { GetUpdatePreferences, PublishUpdateCount, SetUpdatePreferences } from '../bindings/sysentra/internal/app/updatemonitorservice';
   import { GetAutostartEnabled, SetAutostartEnabled } from '../bindings/sysentra/internal/app/autostartservice';
+  import { ChangeEnvironmentVariable, ListEnvironmentVariables } from '../bindings/sysentra/internal/app/environmentservice';
   import { AddService, AssignAccountGroups, ChangeAccount, ChangeFirewall, ChangeFirmware, ChangeMirror, ChangeNFSMount, ChangeRepository, ChangeSambaGlobal, ChangeSambaShare, ChangeService, ChangeTurnstileReady, ChangeTurnstileService, ChangeUserService, ChangeXBPSRule, CreateUser, EditUser, GetFirewall, GetKernelStatus, GetMirrorRecovery, GetSambaServer, GetServiceDetails, GetSystemInfo, InitializeUserServices, ListAccountHistory, ListAccounts, ListDrivers, ListFirmware, ListKernels, ListMirrors, ListNFSClient, ListRepositories, ListServices, ListTurnstileServices, ListUserServices, ListXBPSConfigRules, ReconfigureKernel, SetDefaultKernel, SetMirrorRecovery, UpdateTurnstileEnvironment } from '../bindings/sysentra/internal/app/systemservice';
   import logoUrl from '../../assets/sysentra.png';
   import VirtualPackageTable from './components/VirtualPackageTable.svelte';
@@ -19,7 +20,7 @@
   import { updatePackageAfterTransaction } from './lib/package-list.js';
   import { isTransactionMinimizable, minimizedStatusFor } from './lib/transaction-minimize.js';
 
-  const navigation = ['Discover', 'Installed', 'Updates', 'Repositories', 'XBPS Config', 'Mirrors', 'Services', 'Users & Groups', 'Firewall', 'Samba Server', 'NFS Client', 'Kernels', 'Firmware', 'Drivers'];
+  const navigation = ['Discover', 'Installed', 'Updates', 'Repositories', 'XBPS Config', 'Mirrors', 'Services', 'Users & Groups', 'Environment', 'Firewall', 'Samba Server', 'NFS Client', 'Kernels', 'Firmware', 'Drivers'];
   const driverCategories = ['All', 'Active', 'Video', 'Wi-Fi', 'Ethernet', 'Bluetooth', 'Audio', 'Webcam', 'Touchscreen', 'Printers', 'Scanners', 'Other'];
   const themes = [['default', 'Default'], ['catppuccin', 'Catppuccin'], ['everforest', 'Everforest'], ['github', 'GitHub'], ['gruvbox', 'Gruvbox'], ['one-dark', 'One Dark'], ['dracula', 'Dracula'], ['sepia', 'Sepia'], ['nord', 'Nord'], ['material', 'Material']];
   const sambaPermissions = [['0744', '744 – rwx r-- r--'], ['0755', '755 – rwx r-x r-x'], ['0770', '770 – rwx rwx ---'], ['0775', '775 – rwx rwx r-x'], ['0777', '777 – rwx rwx rwx']];
@@ -85,6 +86,16 @@
   let nfsMounts: NFSMountView[] = [];
   let users: UserView[] = [];
   let groups: GroupView[] = [];
+  let environmentVariables: EnvironmentVariableView[] = [];
+  let environmentScope = 'All';
+  let environmentDialog: HTMLDialogElement;
+  let environmentName = '';
+  let environmentOldName = '';
+  let environmentSourceFile = '';
+  let environmentValue = '';
+  let environmentTargetScope = 'bash';
+  let environmentSaving = false;
+  let environmentError = '';
   let accountTab: 'users' | 'groups' = 'users';
   let accountDialog: HTMLDialogElement;
   let accountOperation = 'user-add';
@@ -250,6 +261,7 @@
   $: filteredNFSMounts = nfsMounts.filter((item) => [item.source, item.target, item.type, item.options, item.mounted ? 'mounted' : 'unmounted'].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredUsers = users.filter((item) => [item.name, item.home, item.shell, String(item.uid), ...item.groups].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: filteredGroups = groups.filter((item) => [item.name, String(item.gid), ...item.members].some((value) => value.toLowerCase().includes(normalizedQuery)));
+  $: filteredEnvironmentVariables = environmentVariables.filter((item) => (environmentScope === 'All' || item.scope === environmentScope) && [item.name, item.value, item.scope, item.file].some((value) => value.toLowerCase().includes(normalizedQuery)));
   $: transactionMinimizable = isTransactionMinimizable(transactionPlan, transactionLoading, confirmationAction, transactionOutcome);
   $: minimizedTransactionStatus = minimizedStatusFor(transactionOutcome, transactionError, transactionLoading, streamingTransactionRequest, transactionPlan);
   $: latestTransactionLog = transactionLogs.length ? transactionLogs[transactionLogs.length - 1] : '';
@@ -304,7 +316,7 @@
     if (view === 'Discover' || view === 'Installed' || view === 'Updates') {
       systemRequestID += 1;
       if (!showCachedPackages(view)) loadPackages(view);
-    } else if (view === 'Services' || view === 'Users & Groups' || view === 'Firewall' || view === 'Samba Server' || view === 'NFS Client' || view === 'Kernels' || view === 'Repositories' || view === 'XBPS Config' || view === 'Mirrors' || view === 'Firmware' || view === 'Drivers') {
+    } else if (view === 'Services' || view === 'Users & Groups' || view === 'Environment' || view === 'Firewall' || view === 'Samba Server' || view === 'NFS Client' || view === 'Kernels' || view === 'Repositories' || view === 'XBPS Config' || view === 'Mirrors' || view === 'Firmware' || view === 'Drivers') {
       loadSystemView(view);
     } else {
       systemRequestID += 1;
@@ -393,6 +405,10 @@
       if (view === 'Users & Groups') {
         const result = await ListAccounts();
         if (requestID === systemRequestID) { users = result.users; groups = result.groups; }
+      }
+      if (view === 'Environment') {
+        const result = await ListEnvironmentVariables();
+        if (requestID === systemRequestID) environmentVariables = result;
       }
     } catch (error) {
       if (requestID === systemRequestID) systemError = error instanceof Error ? error.message : String(error);
@@ -1325,6 +1341,36 @@
     accountGroups = accountGroups.includes(group) ? accountGroups.filter((item) => item !== group) : [...accountGroups, group];
   }
 
+  function openEnvironmentDialog(variable: EnvironmentVariableView | null = null) {
+    environmentName = variable?.name ?? '';
+    environmentOldName = variable?.name ?? '';
+    environmentSourceFile = variable?.file ?? '';
+    environmentValue = variable?.value ?? '';
+    environmentTargetScope = variable?.scope.toLowerCase() ?? 'bash';
+    environmentError = '';
+    environmentDialog.showModal();
+  }
+
+  async function saveEnvironmentVariable() {
+    if (environmentSaving) return;
+    environmentSaving = true;
+    environmentError = '';
+    try {
+      environmentVariables = await ChangeEnvironmentVariable(environmentTargetScope, 'set', environmentName.trim(), environmentOldName, environmentValue, environmentSourceFile);
+      environmentDialog.close();
+    } catch (error) {
+      environmentError = error instanceof Error ? error.message : String(error);
+    } finally {
+      environmentSaving = false;
+    }
+  }
+
+  function confirmEnvironmentRemoval(variable: EnvironmentVariableView) {
+    openConfirmation('Remove environment variable', `Remove ${variable.name} from ${variable.scope}.`, true, '', async () => {
+      environmentVariables = await ChangeEnvironmentVariable(variable.scope, 'remove', variable.name, '', '', variable.file);
+    });
+  }
+
   function confirmAccountRemoval(kind: 'user' | 'group', name: string) {
     const user = kind === 'user' ? users.find((item) => item.name === name) : null;
     const activity = user && (user.sessions || user.processes) ? ` ${user.sessions} active session(s) and ${user.processes} running process(es) were detected.` : '';
@@ -1651,6 +1697,12 @@
           <div class="flex gap-1 border-b border-surface-300-700 bg-surface-50-900 px-3 pt-2" role="tablist"><button type="button" role="tab" aria-selected={accountTab === 'users'} class="border-b-2 px-3 py-2 text-sm {accountTab === 'users' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500'}" on:click={() => accountTab = 'users'}>Users</button><button type="button" role="tab" aria-selected={accountTab === 'groups'} class="border-b-2 px-3 py-2 text-sm {accountTab === 'groups' ? 'border-primary-500 font-semibold text-primary-700-300' : 'border-transparent text-surface-500'}" on:click={() => accountTab = 'groups'}>Groups</button></div>
           {#if accountTab === 'users'}<div class="account-user-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>User</span><span>UID</span><span>Status</span><span>Activity</span><span>Home / shell</span><span>Groups</span><span>Actions</span></div><div class="system-table-body">{#each filteredUsers as user}<div class="account-user-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-medium">{user.name}</span><span class="font-mono text-xs">{user.uid}</span><span class="w-fit rounded-full border px-2 py-0.5 text-xs {user.password === 'Password set' ? 'border-success-500/40 bg-success-500/10 text-success-700-300' : user.password === 'Locked' ? 'border-error-500/40 bg-error-500/10 text-error-700-300' : 'border-warning-500/40 bg-warning-500/10 text-warning-700-300'}">{user.password || 'Unknown'}</span><span class="text-xs" title={`${user.sessions} sessions, ${user.processes} processes`}>{user.sessions || user.processes ? `${user.sessions} session · ${user.processes} proc` : 'Inactive'}</span><span class="min-w-0"><span class="block truncate font-mono text-xs" title={user.home}>{user.home}</span><span class="block truncate font-mono text-xs text-surface-500" title={user.shell}>{user.shell}</span></span><span class="truncate text-xs" title={user.groups.join(', ')}><strong>{user.primaryGroup || '—'}</strong>{user.groups.filter((name) => name !== user.primaryGroup).length ? ` · ${user.groups.filter((name) => name !== user.primaryGroup).join(', ')}` : ''}</span><details class="account-actions relative"><summary class="btn preset-tonal cursor-pointer select-none list-none">Actions <span aria-hidden="true">▾</span></summary><div class="absolute right-0 z-20 mt-1 grid min-w-44 gap-1 rounded-base border border-surface-300-700 bg-surface-100-800 p-1 shadow-xl"><span title={user.removable ? '' : 'System accounts cannot be edited'}><button type="button" class="w-full rounded-base px-2 py-1.5 text-left hover:bg-surface-200-800 disabled:cursor-not-allowed disabled:opacity-50" disabled={!user.removable} on:click={(event) => runAccountAction(event, () => openAccountDialog('user-edit', user.name))}>Edit account</button></span><span title={user.removable ? '' : 'System accounts cannot change primary group'}><button type="button" class="w-full rounded-base px-2 py-1.5 text-left hover:bg-surface-200-800 disabled:cursor-not-allowed disabled:opacity-50" disabled={!user.removable} on:click={(event) => runAccountAction(event, () => openAccountDialog('primary-group-change', user.name))}>Change primary group</button></span><button type="button" class="rounded-base px-2 py-1.5 text-left hover:bg-surface-200-800" on:click={(event) => runAccountAction(event, () => openAccountDialog('membership-add', user.name))}>Assign groups</button><span title={user.groups.some((name) => groups.find((group) => group.name === name)?.gid !== user.gid) ? '' : 'No supplementary groups to unassign'}><button type="button" class="w-full rounded-base px-2 py-1.5 text-left hover:bg-surface-200-800 disabled:cursor-not-allowed disabled:opacity-50" disabled={!user.groups.some((name) => groups.find((group) => group.name === name)?.gid !== user.gid)} on:click={(event) => runAccountAction(event, () => openAccountDialog('membership-remove', user.name))}>Unassign group</button></span><span title={user.removable ? '' : 'System accounts cannot be locked or unlocked'}><button type="button" class="w-full rounded-base px-2 py-1.5 text-left hover:bg-surface-200-800 disabled:cursor-not-allowed disabled:opacity-50" disabled={!user.removable} on:click={(event) => runAccountAction(event, () => confirmPasswordLock(user))}>{user.password === 'Locked' ? 'Unlock password' : 'Lock password'}</button></span><span title={user.removable ? 'The home directory is preserved' : 'System accounts cannot be removed'}><button type="button" class="w-full rounded-base px-2 py-1.5 text-left text-error-700-300 hover:bg-error-500/10 disabled:cursor-not-allowed disabled:opacity-50" disabled={!user.removable} on:click={(event) => runAccountAction(event, () => confirmAccountRemoval('user', user.name))}>Remove user</button></span></div></details></div>{:else}<p class="p-5 text-sm text-surface-500">No matching users.</p>{/each}</div>{:else}<div class="account-group-grid package-table-header grid border-b border-surface-300-700 px-3 py-2 text-xs font-semibold"><span>Group</span><span>GID</span><span>Explicit members</span><span>Actions</span></div><div class="system-table-body">{#each filteredGroups as group}<div class="account-group-grid grid items-center border-b border-surface-200-800 px-3 py-2 text-sm"><span class="truncate font-medium">{group.name}</span><span class="font-mono text-xs">{group.gid}</span><span class="truncate text-xs" title={group.members.join(', ')}>{group.members.join(', ') || '—'}</span><span><button type="button" class="btn border-error-500/50 text-error-700-300" disabled={!group.removable} title={group.removable ? 'Remove this group' : 'System groups are protected'} on:click={() => confirmAccountRemoval('group', group.name)}>Remove</button></span></div>{:else}<p class="p-5 text-sm text-surface-500">No matching groups.</p>{/each}</div>{/if}
         </section>
+      {:else if activeView === 'Environment'}
+        <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="environment-heading">
+          <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3"><div><h2 id="environment-heading" class="font-semibold">Environment variables</h2><p class="text-xs text-surface-500">Global variables and Sysentra-managed Bash, Zsh and Fish entries.</p></div><div class="ml-auto flex gap-2"><button type="button" class="btn preset-filled-primary-500" on:click={() => openEnvironmentDialog()}>Add variable</button><button type="button" class="btn preset-tonal" on:click={() => loadSystemView()} disabled={systemLoading}>Reload</button></div></header>
+          <div class="flex gap-1 border-b border-surface-300-700 bg-surface-50-900 px-3 py-2" aria-label="Environment scope">{#each ['All', 'Global', 'Bash', 'Zsh', 'Fish'] as scope}<button type="button" class="rounded-base border px-2.5 py-1 text-xs {environmentScope === scope ? 'border-primary-500 bg-primary-500/10 font-semibold text-primary-700-300' : 'border-surface-300-700 hover:bg-surface-200-800'}" aria-pressed={environmentScope === scope} on:click={() => environmentScope = scope}>{scope}</button>{/each}</div>
+          <div class="system-table-body"><table class="environment-table-grid text-left"><colgroup><col class="environment-scope-column" /><col class="environment-name-column" /><col /><col class="environment-file environment-file-column" /><col class="environment-actions-column" /></colgroup><thead class="package-table-header sticky top-0 z-10 text-xs font-semibold"><tr><th>Scope</th><th>Name</th><th>Value</th><th class="environment-file">File</th><th>Actions</th></tr></thead><tbody>{#each filteredEnvironmentVariables as variable}<tr class="border-b border-surface-200-800 text-sm"><td><span class="inline-block rounded-full border border-primary-500/40 bg-primary-500/10 px-2 py-0.5 text-xs text-primary-700-300">{variable.scope}</span></td><td class="truncate font-mono text-xs" title={variable.name}>{variable.name}</td><td class="truncate font-mono text-xs" title={variable.value}>{variable.value}</td><td class="environment-file truncate font-mono text-xs text-surface-500" title={variable.file}>{variable.file}</td><td><span class="flex gap-1"><button type="button" class="btn preset-tonal" on:click={() => openEnvironmentDialog(variable)}>Edit</button><button type="button" class="btn border-error-500/50 text-error-700-300" on:click={() => confirmEnvironmentRemoval(variable)}>Remove</button></span></td></tr>{:else}<tr><td colspan="5" class="p-5 text-sm text-surface-500">No matching environment variables.</td></tr>{/each}</tbody></table></div>
+        </section>
       {:else if activeView === 'Firewall'}
         <section class="system-table rounded-base border border-surface-300-700 bg-surface-100-800" aria-labelledby="firewall-heading">
           <header class="flex flex-wrap items-center gap-3 border-b border-surface-300-700 p-3">
@@ -1751,8 +1803,8 @@
   </main>
 
   <footer class="app-chrome col-span-2 flex items-center gap-4 border-t border-surface-300-700 bg-surface-100-800 px-3 text-[0.6875rem] text-surface-500 max-[760px]:col-span-1">
-    <span>{activeView === 'Services' ? 'runit' : activeView === 'Users & Groups' ? 'Local accounts' : activeView === 'Firewall' ? firewall?.backend || 'Firewall' : activeView === 'Samba Server' ? 'Samba' : activeView === 'NFS Client' ? 'NFS' : activeView === 'Kernels' || activeView === 'Repositories' || activeView === 'XBPS Config' ? 'XBPS' : activeView === 'Mirrors' ? 'xmirror' : activeView === 'Firmware' ? 'fwupd' : activeView === 'Drivers' ? 'PCI + USB + SDIO' : flatpakSourceEnabled ? 'XBPS + Flatpak' : 'XBPS'}</span>
-    <span>{activeView === 'Services' ? `${filteredServices.length} services` : activeView === 'Users & Groups' ? `${accountTab === 'users' ? filteredUsers.length + ' users' : filteredGroups.length + ' groups'}` : activeView === 'Firewall' ? `${filteredFirewallRules.length} rules` : activeView === 'Samba Server' ? `${filteredSambaShares.length} shares` : activeView === 'NFS Client' ? `${filteredNFSMounts.length} mounts` : activeView === 'Kernels' ? `${filteredKernels.length} kernels` : activeView === 'Repositories' ? `${filteredRepositories.length} repositories` : activeView === 'XBPS Config' ? `${filteredXBPSConfigRules.length} rules` : activeView === 'Mirrors' ? `${filteredMirrors.length} mirrors` : activeView === 'Firmware' ? `${filteredFirmwareDevices.length} devices` : activeView === 'Drivers' ? `${filteredDriverDevices.length} devices` : `${packageResultCount.toLocaleString()} ${activeView === 'Discover' ? 'available' : activeView === 'Installed' ? 'installed' : activeView === 'Updates' ? 'updates' : ''}`}</span>
+    <span>{activeView === 'Services' ? 'runit' : activeView === 'Users & Groups' ? 'Local accounts' : activeView === 'Environment' ? 'Global + shell' : activeView === 'Firewall' ? firewall?.backend || 'Firewall' : activeView === 'Samba Server' ? 'Samba' : activeView === 'NFS Client' ? 'NFS' : activeView === 'Kernels' || activeView === 'Repositories' || activeView === 'XBPS Config' ? 'XBPS' : activeView === 'Mirrors' ? 'xmirror' : activeView === 'Firmware' ? 'fwupd' : activeView === 'Drivers' ? 'PCI + USB + SDIO' : flatpakSourceEnabled ? 'XBPS + Flatpak' : 'XBPS'}</span>
+    <span>{activeView === 'Services' ? `${filteredServices.length} services` : activeView === 'Users & Groups' ? `${accountTab === 'users' ? filteredUsers.length + ' users' : filteredGroups.length + ' groups'}` : activeView === 'Environment' ? `${filteredEnvironmentVariables.length} variables` : activeView === 'Firewall' ? `${filteredFirewallRules.length} rules` : activeView === 'Samba Server' ? `${filteredSambaShares.length} shares` : activeView === 'NFS Client' ? `${filteredNFSMounts.length} mounts` : activeView === 'Kernels' ? `${filteredKernels.length} kernels` : activeView === 'Repositories' ? `${filteredRepositories.length} repositories` : activeView === 'XBPS Config' ? `${filteredXBPSConfigRules.length} rules` : activeView === 'Mirrors' ? `${filteredMirrors.length} mirrors` : activeView === 'Firmware' ? `${filteredFirmwareDevices.length} devices` : activeView === 'Drivers' ? `${filteredDriverDevices.length} devices` : `${packageResultCount.toLocaleString()} ${activeView === 'Discover' ? 'available' : activeView === 'Installed' ? 'installed' : activeView === 'Updates' ? 'updates' : ''}`}</span>
     <span class="ml-auto">{systemName}</span>
   </footer>
 
@@ -1921,6 +1973,20 @@
       </div>
       <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={firmwareActionLoading} on:click={() => firmwareDialog.close()}>{firmwareActionSucceeded ? 'Close' : 'Cancel'}</button>{#if !firmwareActionSucceeded}<button type="button" class="btn preset-filled-primary-500" disabled={firmwareActionLoading || (firmwareOperation === 'update' && !firmwareDevice?.newVersion)} on:click={executeFirmwareAction}>{firmwareActionLoading ? 'Working…' : firmwareOperation === 'refresh' ? 'Refresh' : 'Install update'}</button>{/if}</footer>
     </div>
+  </dialog>
+
+  <dialog bind:this={environmentDialog} class="app-dialog m-auto w-[min(32rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="environment-dialog-title">
+    <form on:submit|preventDefault={saveEnvironmentVariable}>
+      <header class="border-b border-surface-300-700 px-4 py-3"><h2 id="environment-dialog-title" class="font-semibold">{environmentOldName ? 'Edit' : 'Add'} environment variable</h2></header>
+      <div class="dialog-content space-y-3 overflow-auto p-4">
+        <label class="block text-sm"><span class="mb-1 block font-medium">Scope</span><select class="select app-input-surface w-full" bind:value={environmentTargetScope} disabled={Boolean(environmentOldName)}><option value="global">Global (/etc/environment)</option><option value="bash">Bash</option><option value="zsh">Zsh</option><option value="fish">Fish</option></select></label>
+        <label class="block text-sm"><span class="mb-1 block font-medium">Name</span><input class="input app-input-surface w-full font-mono" bind:value={environmentName} pattern="[A-Za-z_][A-Za-z0-9_]*" maxlength="128" autocomplete="off" required /></label>
+        <label class="block text-sm"><span class="mb-1 block font-medium">Value</span><input class="input app-input-surface w-full font-mono" bind:value={environmentValue} maxlength="4096" autocomplete="off" /></label>
+        <p class="text-xs text-surface-500">Changes apply to new sessions. Global changes require administrator authorization.</p>
+        {#if environmentError}<p class="rounded-base border border-error-500/40 bg-error-500/10 p-3 text-xs" role="alert">{environmentError}</p>{/if}
+      </div>
+      <footer class="flex justify-end gap-2 border-t border-surface-300-700 px-4 py-3"><button type="button" class="btn preset-tonal" disabled={environmentSaving} on:click={() => environmentDialog.close()}>Cancel</button><button type="submit" class="btn preset-filled-primary-500" disabled={environmentSaving || !environmentName.trim()}>{environmentSaving ? 'Saving…' : 'Save'}</button></footer>
+    </form>
   </dialog>
 
   <dialog bind:this={accountDialog} class="app-dialog m-auto w-[min(30rem,calc(100%-2rem))] rounded-base border border-surface-300-700 bg-surface-100-800 p-0 text-surface-950-50 shadow-xl backdrop:bg-black/45" aria-labelledby="account-title">
