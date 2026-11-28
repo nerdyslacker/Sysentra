@@ -98,6 +98,7 @@ func main() {
 	turnstileRoot := filepath.Join(home, ".config", "service")
 	environmentService := appservice.NewEnvironmentService(environment.NewManager(home), transactionClient)
 	systemService := appservice.NewSystemService(kernel.NewInventory(commandRunner), repositories.NewInventory(commandRunner), mirrors.NewClient(), settings.NewMirrorRecoveryStore(), xbpsconfig.NewInventory(), firmware.NewInventory(commandRunner), firewall.NewInventory(commandRunner), drivers.NewInventory(commandRunner), transactionClient, services.NewUserInventory(commandRunner, userServiceRoot, "/proc"), services.NewUserManager(commandRunner, userServiceRoot), services.NewUserInventory(commandRunner, turnstileRoot, "/proc"), services.NewTurnstileManager(commandRunner, turnstileRoot), shares.NewInventory(), accounts.NewInventory())
+	var window *application.WebviewWindow
 	app := application.New(application.Options{
 		Name:        "Sysentra",
 		Description: "Software and system management for Void Linux",
@@ -124,6 +125,15 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: applicationID,
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				if window != nil {
+					window.Restore()
+					window.Show().Focus()
+				}
+			},
+		},
 	})
 	app.OnShutdown(func() {
 		inventoryService.CancelMockScan()
@@ -136,7 +146,7 @@ func main() {
 	if background {
 		windowURL = "/?background=1"
 	}
-	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Sysentra",
 		Width:            1180,
 		Height:           760,
